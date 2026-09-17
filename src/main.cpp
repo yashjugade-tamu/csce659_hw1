@@ -368,69 +368,114 @@ bool validateInput(Ball &ball, Box &box, Physics &physics)
 bool createSimulation(Ball &ball, Box &box, Physics &physics)
 {
     float values[20];
+
     for (int i = 0; i < 20; i++)
     {
-        if (!getInputValue(
-                i,
-                values[i]))
+        if (!getInputValue(i, values[i]))
         {
-            errorMessage = "Invalid numerical value. Please check the fields.";
+            errorMessage =
+                "Invalid numerical value. Please check the fields.";
 
             return false;
         }
     }
 
-
-
     ball.radius = values[0];
-
     ball.mass = values[1];
 
     ball.position.x = values[2];
-
     ball.position.y = values[3];
-
     ball.position.z = values[4];
 
     ball.velocity.x = values[5];
-    ball.velocity.y =values[6];
-
+    ball.velocity.y = values[6];
     ball.velocity.z = values[7];
 
     box.width = values[8];
-
     box.height = values[9];
-
     box.depth = values[10];
 
-
-    box.center = {0,0,0};
+    box.center = {0, 0, 0};
 
     physics.wind.x = values[11];
-
     physics.wind.y = values[12];
-
     physics.wind.z = values[13];
 
     physics.restitution = values[14];
-
     physics.friction = values[15];
-
     physics.timestep = values[16];
 
-
     physics.baseDrag = values[17];
-
     physics.centreDrag = values[18];
-
     physics.dragFalloff = values[19];
 
-    physics.gravity = {0.0f,-9.81f,0.0f};
+    physics.gravity = {0.0f, -9.81f, 0.0f};
 
-    if (!validateInput( ball,box,physics))
+
+    // Validate everything before starting the simulation.
+
+    if (!validateInput(ball, box, physics))
     {
         return false;
     }
+
+
+    // Debug information for checking initial conditions.
+
+    cout << "\n========================================\n";
+    cout << "[DEBUG] Simulation started\n";
+    cout << "========================================\n";
+
+    cout << "[DEBUG] Ball radius : "
+         << ball.radius << endl;
+
+    cout << "[DEBUG] Ball mass   : "
+         << ball.mass << endl;
+
+    cout << "[DEBUG] Position    : ("
+         << ball.position.x << ", "
+         << ball.position.y << ", "
+         << ball.position.z << ")\n";
+
+    cout << "[DEBUG] Velocity    : ("
+         << ball.velocity.x << ", "
+         << ball.velocity.y << ", "
+         << ball.velocity.z << ")\n";
+
+    cout << "[DEBUG] Box         : "
+         << box.width << " x "
+         << box.height << " x "
+         << box.depth << endl;
+
+    cout << "[DEBUG] Wind        : ("
+         << physics.wind.x << ", "
+         << physics.wind.y << ", "
+         << physics.wind.z << ")\n";
+
+    cout << "[DEBUG] Restitution : "
+         << physics.restitution << endl;
+
+    cout << "[DEBUG] Friction    : "
+         << physics.friction << endl;
+
+    cout << "[DEBUG] Timestep    : "
+         << physics.timestep << endl;
+
+    cout << "[DEBUG] Base drag   : "
+         << physics.baseDrag << endl;
+
+    cout << "[DEBUG] Centre drag : "
+         << physics.centreDrag << endl;
+
+    cout << "[DEBUG] Falloff     : "
+         << physics.dragFalloff << endl;
+
+    cout << "[DEBUG] Gravity     : ("
+         << physics.gravity.x << ", "
+         << physics.gravity.y << ", "
+         << physics.gravity.z << ")\n";
+
+    cout << "========================================\n\n";
 
 
     return true;
@@ -482,6 +527,18 @@ Vector3 calculateForces(Ball &ball,Box &box,Physics &physics)
 
     force.y += -drag * ball.velocity.y; 
     force.z += -drag *ball.velocity.z;
+
+    cout << "[DEBUG FORCE] position=("
+     << ball.position.x << ", "
+     << ball.position.y << ", "
+     << ball.position.z << ") "
+     << "velocity=("
+     << ball.velocity.x << ", "
+     << ball.velocity.y << ", "
+     << ball.velocity.z << ") "
+     << "drag=" << drag
+     << endl;
+
     return force;
 }
 
@@ -705,6 +762,25 @@ void updateSimulation(Ball &ball,Box &box,Physics &physics)
         CollisionInfo collision =findCollision(  ball, box,remainingTime
             );
 
+        /*if (collision.normal.x > 0.5f)
+            cout << "LEFT";
+
+        else if (collision.normal.x < -0.5f)
+            cout << "RIGHT";
+
+        else if (collision.normal.y > 0.5f)
+            cout << "BOTTOM";
+
+        else if (collision.normal.y < -0.5f)
+            cout << "TOP";
+
+        else if (collision.normal.z > 0.5f)
+            cout << "FRONT";
+
+        else if (collision.normal.z < -0.5f)
+            cout << "BACK";
+
+        cout << endl;*/
 
         if (!collision.collision)
         {
