@@ -7,52 +7,10 @@
 
 using namespace std;
 
-
-/*
-============================================================
-
-        PHYSICALLY BASED MODELING AND ANIMATION
-
-                  ASSIGNMENT 1
-
-             BOUNCING BALL SIMULATION
-
-============================================================
-
-The simulation contains:
-
-    - Gravity
-    - User-defined wind
-    - Spatially varying air resistance
-    - Collision detection
-    - Collision response
-    - Friction
-    - Coefficient of restitution
-    - Euler integration
-    - Variable timestep
-    - Fractional timestep collision handling
-    - Six-sided box
-
-Gravity is fixed at:
-
-                    (0, -9.81, 0)
-
-The other environmental parameters can be changed by
-the user before starting the simulation.
-
-============================================================
-*/
-
-
-// ------------------------------------------------------------
-// STRUCTURES
-// ------------------------------------------------------------
-
 struct Ball
 {
     Vector3 position;
     Vector3 velocity;
-
     float radius;
     float mass;
 };
@@ -63,45 +21,38 @@ struct Box
     float width;
     float height;
     float depth;
-
     Vector3 center;
 };
 
 
 struct Physics
 {
-    // Gravity is fixed for this assignment.
     Vector3 gravity;
-
-    // User controlled environment
     Vector3 wind;
-
     float baseDrag;
     float centreDrag;
     float dragFalloff;
-
     float restitution;
     float friction;
-
-    // User controlled timestep
     float timestep;
 };
+
+/*=============================
+User input part has been implemented by referring AI suggestions. Most work was done by me*/
+
 
 
 struct InputField
 {
     string name;
     string value;
-
     Rectangle rectangle;
-
     bool selected;
 };
 
 
-// ------------------------------------------------------------
-// GLOBAL VARIABLES
-// ------------------------------------------------------------
+
+// Define global variables.
 
 const int NUMBER_OF_FIELDS = 21;
 
@@ -115,28 +66,12 @@ bool simulationStarted = false;
 
 bool paused = false;
 
-
-// ------------------------------------------------------------
-// INPUT FIELD SETUP
-// ------------------------------------------------------------
+//Input from UI
 
 void setupInputFields()
 {
-    /*
-        These are the default values.
 
-        The starting position and velocity are deliberately
-        not symmetric.
-
-        This makes the ball travel diagonally and gives it
-        opportunities to hit different sides of the box.
-
-        The timestep is also explicitly shown here because
-        changing dt is one of the requirements of the assignment.
-    */
-
-
-    // ---------------- BALL ----------------
+    //Ball inputs
 
     inputFields[0] = {
         "Ball Radius",
@@ -151,9 +86,7 @@ void setupInputFields()
         {350, 105, 220, 30},
         false
     };
-
-
-    // ----------- POSITION -----------------
+    //Position inputs
 
     inputFields[2] = {
         "Position X",
@@ -161,23 +94,19 @@ void setupInputFields()
         {350, 160, 220, 30},
         false
     };
-
     inputFields[3] = {
         "Position Y",
         "1.5",
         {350, 195, 220, 30},
         false
     };
-
     inputFields[4] = {
         "Position Z",
         "-3.0",
         {350, 230, 220, 30},
         false
     };
-
-
-    // ----------- VELOCITY -----------------
+    //Velocity inputs
 
     inputFields[5] = {
         "Velocity X",
@@ -185,7 +114,6 @@ void setupInputFields()
         {350, 285, 220, 30},
         false
     };
-
     inputFields[6] = {
         "Velocity Y",
         "7.0",
@@ -201,8 +129,7 @@ void setupInputFields()
     };
 
 
-    // ------------ BOX ---------------------
-
+    // Box inputs
     inputFields[8] = {
         "Box Width",
         "12.0",
@@ -216,7 +143,6 @@ void setupInputFields()
         {350, 445, 220, 30},
         false
     };
-
     inputFields[10] = {
         "Box Depth",
         "12.0",
@@ -225,8 +151,7 @@ void setupInputFields()
     };
 
 
-    // ------------ WIND --------------------
-
+    // Wind input
     inputFields[11] = {
         "Wind X",
         "0.35",
@@ -247,9 +172,7 @@ void setupInputFields()
         {350, 605, 220, 30},
         false
     };
-
-
-    // ----------- PHYSICS ------------------
+    // Physics inputs
 
     inputFields[14] = {
         "Restitution",
@@ -257,38 +180,31 @@ void setupInputFields()
         {900, 80, 220, 30},
         false
     };
-
     inputFields[15] = {
         "Friction",
         "0.03",
         {900, 115, 220, 30},
         false
     };
-
     inputFields[16] = {
         "Timestep",
         "0.005",
         {900, 150, 220, 30},
         false
     };
-
-
-    // -------- SPATIAL DRAG ----------------
-
+    //Spatial based drag inputs
     inputFields[17] = {
         "Base Drag",
         "0.002",
         {900, 210, 220, 30},
         false
     };
-
     inputFields[18] = {
         "Centre Drag",
         "0.018",
         {900, 245, 220, 30},
         false
     };
-
     inputFields[19] = {
         "Drag Falloff",
         "2.0",
@@ -297,13 +213,7 @@ void setupInputFields()
     };
 
 
-    // ----------- GRAVITY ------------------
-
-    /*
-        Gravity is intentionally NOT an input.
-
-        It is fixed at -9.81 m/s^2 in the Y direction.
-    */
+    //Display gravity value, but not editable
 
     inputFields[20] = {
         "Gravity",
@@ -313,14 +223,7 @@ void setupInputFields()
     };
 }
 
-
-// ------------------------------------------------------------
-// STRING TO FLOAT
-// ------------------------------------------------------------
-
-bool stringToFloat(
-    string text,
-    float &number)
+bool stringToFloat(string text, float &number)
 {
     if (text.length() == 0)
         return false;
@@ -328,13 +231,11 @@ bool stringToFloat(
     try
     {
         size_t position;
-
         number =
             stof(
                 text,
                 &position
             );
-
         if (position != text.length())
             return false;
 
@@ -350,76 +251,48 @@ bool stringToFloat(
 }
 
 
-// ------------------------------------------------------------
-// GET INPUT VALUE
-// ------------------------------------------------------------
+//Accept user input and convert to float, return false if invalid
 
-bool getInputValue(
-    int index,
-    float &value)
+bool getInputValue(int index,float &value)
 {
     return stringToFloat(
         inputFields[index].value,
         value
     );
 }
+/*
+=================================
+Below part was coded by me as per the instructions in the assignment. AI was not used for this part.
+=================================*/
 
+//Validate user input values based on constraints
 
-// ------------------------------------------------------------
-// VALIDATE INPUT
-// ------------------------------------------------------------
-
-bool validateInput(
-    Ball &ball,
-    Box &box,
-    Physics &physics)
+bool validateInput(Ball &ball, Box &box, Physics &physics)
 {
     errorMessage = "";
-
-
     if (ball.radius <= 0)
-    {
-        errorMessage =
-            "Ball radius must be greater than zero.";
-
+    { errorMessage = "Ball radius must be greater than zero.";
         return false;
     }
-
-
     if (ball.mass <= 0)
     {
-        errorMessage =
-            "Ball mass must be greater than zero.";
-
+        errorMessage = "Ball mass must be greater than zero.";
         return false;
     }
-
-
-    if (box.width <= 0 ||
-        box.height <= 0 ||
-        box.depth <= 0)
+    if (box.width <= 0 || box.height <= 0 || box.depth <= 0)
     {
-        errorMessage =
-            "All box dimensions must be greater than zero.";
-
+        errorMessage = "All box dimensions must be greater than zero.";
         return false;
     }
-
-
     if (physics.timestep <= 0)
     {
-        errorMessage =
-            "Timestep must be greater than zero.";
-
+        errorMessage = "Timestep must be greater than zero.";
         return false;
     }
-
 
     if (physics.timestep > 0.1f)
     {
-        errorMessage =
-            "Timestep is too large. Use a value <= 0.1.";
-
+        errorMessage = "Timestep is too large. Use a value <= 0.1.";
         return false;
     }
 
@@ -427,41 +300,26 @@ bool validateInput(
     if (physics.restitution < 0 ||
         physics.restitution > 1)
     {
-        errorMessage =
-            "Restitution must be between 0 and 1.";
-
+        errorMessage = "Restitution must be between 0 and 1.";
         return false;
     }
-
-
     if (physics.friction < 0 ||
         physics.friction > 1)
     {
         errorMessage =
             "Friction must be between 0 and 1.";
-
         return false;
     }
-
-
     if (physics.baseDrag < 0)
     {
-        errorMessage =
-            "Base drag cannot be negative.";
-
+        errorMessage ="Base drag cannot be negative.";
         return false;
     }
-
-
     if (physics.centreDrag < 0)
     {
-        errorMessage =
-            "Centre drag cannot be negative.";
-
+        errorMessage = "Centre drag cannot be negative.";
         return false;
     }
-
-
     if (physics.dragFalloff <= 0)
     {
         errorMessage =
@@ -471,63 +329,32 @@ bool validateInput(
     }
 
 
-    /*
-        Check whether the ball fits inside the box.
-    */
+    float minX =-box.width / 2.0f + ball.radius;
+    float maxX = box.width / 2.0f - ball.radius;
+    float minY =-box.height / 2.0f + ball.radius;
 
-    float minX =
-        -box.width / 2.0f +
-        ball.radius;
+    float maxY = box.height / 2.0f - ball.radius;
+    float minZ = -box.depth / 2.0f + ball.radius;
 
-    float maxX =
-        box.width / 2.0f -
-        ball.radius;
+    float maxZ = box.depth / 2.0f - ball.radius;
 
-
-    float minY =
-        -box.height / 2.0f +
-        ball.radius;
-
-    float maxY =
-        box.height / 2.0f -
-        ball.radius;
-
-
-    float minZ =
-        -box.depth / 2.0f +
-        ball.radius;
-
-    float maxZ =
-        box.depth / 2.0f -
-        ball.radius;
-
-
-    if (ball.position.x < minX ||
-        ball.position.x > maxX)
+    if (ball.position.x < minX || ball.position.x > maxX)
     {
-        errorMessage =
-            "Starting X position is outside the box.";
-
+        errorMessage = "Starting X position is outside the box.";
         return false;
     }
 
 
-    if (ball.position.y < minY ||
-        ball.position.y > maxY)
+    if (ball.position.y < minY || ball.position.y > maxY)
     {
-        errorMessage =
-            "Starting Y position is outside the box.";
-
+        errorMessage = "Starting Y position is outside the box.";
         return false;
     }
 
 
-    if (ball.position.z < minZ ||
-        ball.position.z > maxZ)
+    if (ball.position.z < minZ || ball.position.z > maxZ)
     {
-        errorMessage =
-            "Starting Z position is outside the box.";
-
+        errorMessage = "Starting Z position is outside the box.";
         return false;
     }
 
@@ -536,144 +363,71 @@ bool validateInput(
 }
 
 
-// ------------------------------------------------------------
-// CREATE SIMULATION
-// ------------------------------------------------------------
+//Create simulation
 
-bool createSimulation(
-    Ball &ball,
-    Box &box,
-    Physics &physics)
+bool createSimulation(Ball &ball, Box &box, Physics &physics)
 {
     float values[20];
-
-
-    /*
-        Gravity field is not converted because it is just
-        displayed as information.
-
-        There are 20 actual editable numerical fields.
-    */
-
     for (int i = 0; i < 20; i++)
     {
         if (!getInputValue(
                 i,
                 values[i]))
         {
-            errorMessage =
-                "Invalid numerical value. Please check the fields.";
+            errorMessage = "Invalid numerical value. Please check the fields.";
 
             return false;
         }
     }
 
 
-    // ---------------- BALL ----------------
 
-    ball.radius =
-        values[0];
+    ball.radius = values[0];
 
-    ball.mass =
-        values[1];
+    ball.mass = values[1];
 
+    ball.position.x = values[2];
 
-    // ------------- POSITION ---------------
+    ball.position.y = values[3];
 
-    ball.position.x =
-        values[2];
+    ball.position.z = values[4];
 
-    ball.position.y =
-        values[3];
+    ball.velocity.x = values[5];
+    ball.velocity.y =values[6];
 
-    ball.position.z =
-        values[4];
+    ball.velocity.z = values[7];
 
+    box.width = values[8];
 
-    // ------------- VELOCITY ---------------
+    box.height = values[9];
 
-    ball.velocity.x =
-        values[5];
-
-    ball.velocity.y =
-        values[6];
-
-    ball.velocity.z =
-        values[7];
+    box.depth = values[10];
 
 
-    // ---------------- BOX -----------------
+    box.center = {0,0,0};
 
-    box.width =
-        values[8];
+    physics.wind.x = values[11];
 
-    box.height =
-        values[9];
+    physics.wind.y = values[12];
 
-    box.depth =
-        values[10];
+    physics.wind.z = values[13];
 
+    physics.restitution = values[14];
 
-    box.center = {
-        0,
-        0,
-        0
-    };
+    physics.friction = values[15];
+
+    physics.timestep = values[16];
 
 
-    // ---------------- WIND ----------------
+    physics.baseDrag = values[17];
 
-    physics.wind.x =
-        values[11];
+    physics.centreDrag = values[18];
 
-    physics.wind.y =
-        values[12];
+    physics.dragFalloff = values[19];
 
-    physics.wind.z =
-        values[13];
+    physics.gravity = {0.0f,-9.81f,0.0f};
 
-
-    // ------------- PHYSICS ----------------
-
-    physics.restitution =
-        values[14];
-
-    physics.friction =
-        values[15];
-
-    physics.timestep =
-        values[16];
-
-
-    // ------------- SPATIAL DRAG -----------
-
-    physics.baseDrag =
-        values[17];
-
-    physics.centreDrag =
-        values[18];
-
-    physics.dragFalloff =
-        values[19];
-
-
-    /*
-        Gravity is fixed.
-
-        It is not read from user input.
-    */
-
-    physics.gravity = {
-        0.0f,
-        -9.81f,
-        0.0f
-    };
-
-
-    if (!validateInput(
-            ball,
-            box,
-            physics))
+    if (!validateInput( ball,box,physics))
     {
         return false;
     }
@@ -683,410 +437,126 @@ bool createSimulation(
 }
 
 
-/*
-============================================================
 
-             SPATIAL AIR RESISTANCE
-
-============================================================
-
-The air resistance changes depending on where the ball is.
-
-The centre of the box has the strongest air resistance.
-
-The resistance gets weaker as the ball approaches the
-faces of the box.
-
-The function is:
-
-    k(x) =
-        baseDrag +
-        centreDrag * exp(-falloff * distanceSquared)
-
-
-At the centre:
-
-    distanceSquared = 0
-
-    exp(0) = 1
-
-Therefore:
-
-    k = baseDrag + centreDrag
-
-
-Farther away from the centre:
-
-    exp(-falloff * distanceSquared)
-
-becomes smaller.
-
-Therefore the drag approaches:
-
-    baseDrag
-
-This gives us a spatially varying environment rather than
-a single constant air resistance.
-
-============================================================
-*/
-
-
-float calculateDrag(
-    Vector3 position,
-    Box &box,
-    Physics &physics)
+float calculateDrag(Vector3 position,Box &box,Physics &physics)
 {
-    float dx =
-        (position.x - box.center.x) /
-        (box.width / 2.0f);
+    float dx =(position.x - box.center.x) /(box.width / 2.0f);
 
 
-    float dy =
-        (position.y - box.center.y) /
-        (box.height / 2.0f);
+    float dy = (position.y - box.center.y) / (box.height / 2.0f);
 
 
-    float dz =
-        (position.z - box.center.z) /
-        (box.depth / 2.0f);
+    float dz =(position.z - box.center.z) /(box.depth / 2.0f);
 
 
-    float distanceSquared =
-        dx * dx +
-        dy * dy +
-        dz * dz;
+    float distanceSquared =dx * dx +dy * dy + dz * dz;
+
+    float centreEffect = exp( -physics.dragFalloff *distanceSquared);
 
 
-    float centreEffect =
-        exp(
-            -physics.dragFalloff *
-            distanceSquared
-        );
-
-
-    float drag =
-        physics.baseDrag +
-        physics.centreDrag *
-        centreEffect;
+    float drag =physics.baseDrag +physics.centreDrag *centreEffect;
 
 
     return drag;
 }
 
-
-/*
-============================================================
-
-                 CALCULATION OF FORCES
-
-============================================================
-
-The total force is:
-
-        Ftotal =
-        Fgravity +
-        Fwind +
-        Fdrag
-
-
-Newton's second law:
-
-        F = ma
-
-so:
-
-        a = F/m
-
-
-Gravity:
-
-        Fgravity = m * g
-
-
-Drag:
-
-        Fdrag = -k * v
-
-The drag coefficient k is spatially varying.
-
-============================================================
-*/
-
-
-Vector3 calculateForces(
-    Ball &ball,
-    Box &box,
-    Physics &physics)
+Vector3 calculateForces(Ball &ball,Box &box,Physics &physics)
 {
-    Vector3 force = {
-        0,
-        0,
-        0
-    };
+    Vector3 force = {0,0,0};
+
+    force.x +=ball.mass *physics.gravity.x;
+
+    force.y +=ball.mass *physics.gravity.y;
+
+    force.z +=ball.mass *physics.gravity.z;
+
+    force.x +=physics.wind.x;
+
+    force.y +=physics.wind.y;
+
+    force.z +=physics.wind.z;
 
 
-    // --------------------------------------------------------
-    // GRAVITY
-    // --------------------------------------------------------
+    float drag =calculateDrag( ball.position, box, physics );
+    force.x += -drag * ball.velocity.x;
 
-    force.x +=
-        ball.mass *
-        physics.gravity.x;
-
-    force.y +=
-        ball.mass *
-        physics.gravity.y;
-
-    force.z +=
-        ball.mass *
-        physics.gravity.z;
-
-
-    // --------------------------------------------------------
-    // WIND
-    // --------------------------------------------------------
-
-    force.x +=
-        physics.wind.x;
-
-    force.y +=
-        physics.wind.y;
-
-    force.z +=
-        physics.wind.z;
-
-
-    // --------------------------------------------------------
-    // AIR RESISTANCE
-    // --------------------------------------------------------
-
-    float drag =
-        calculateDrag(
-            ball.position,
-            box,
-            physics
-        );
-
-
-    force.x +=
-        -drag *
-        ball.velocity.x;
-
-    force.y +=
-        -drag *
-        ball.velocity.y;
-
-    force.z +=
-        -drag *
-        ball.velocity.z;
-
-
+    force.y += -drag * ball.velocity.y; 
+    force.z += -drag *ball.velocity.z;
     return force;
 }
 
 
-/*
-============================================================
-
-                  EULER INTEGRATION
-
-============================================================
-
-Forward Euler integration is used.
-
-Position:
-
-    x_new = x_old + v_old * dt
-
-
-Velocity:
-
-    v_new = v_old + a * dt
-
-
-The timestep dt is supplied by the user.
-
-============================================================
-*/
-
-
-void eulerIntegration(
-    Ball &ball,
-    Box &box,
-    Physics &physics,
-    float dt)
+void eulerIntegration(Ball &ball,Box &box,Physics &physics, float dt)
 {
-    Vector3 force =
-        calculateForces(
-            ball,
-            box,
-            physics
-        );
-
-
+    Vector3 force =calculateForces( ball,box, physics);
     Vector3 acceleration;
+    acceleration.x =force.x /ball.mass;
+    acceleration.y = force.y / ball.mass;
 
-    acceleration.x =
-        force.x /
-        ball.mass;
-
-    acceleration.y =
-        force.y /
-        ball.mass;
-
-    acceleration.z =
-        force.z /
-        ball.mass;
+    acceleration.z =  force.z /ball.mass;
 
 
-    // Position update
 
-    ball.position.x =
-        ball.position.x +
-        ball.velocity.x * dt;
+    ball.position.x = ball.position.x + ball.velocity.x * dt;
+     ball.position.y = ball.position.y + ball.velocity.y * dt;
 
-    ball.position.y =
-        ball.position.y +
-        ball.velocity.y * dt;
+    ball.position.z = ball.position.z + ball.velocity.z * dt;
 
-    ball.position.z =
-        ball.position.z +
-        ball.velocity.z * dt;
+    ball.velocity.x = ball.velocity.x + acceleration.x * dt;
 
+    ball.velocity.y = ball.velocity.y + acceleration.y * dt;
 
-    // Velocity update
-
-    ball.velocity.x =
-        ball.velocity.x +
-        acceleration.x * dt;
-
-    ball.velocity.y =
-        ball.velocity.y +
-        acceleration.y * dt;
-
-    ball.velocity.z =
-        ball.velocity.z +
-        acceleration.z * dt;
+    ball.velocity.z = ball.velocity.z + acceleration.z * dt;
 }
 
-
-/*
-============================================================
-
-                COLLISION DETECTION
-
-============================================================
-
-The ball is a sphere.
-
-The center of the ball must always remain at least one
-radius away from every wall.
-
-For example:
-
-    left wall = -width / 2
-
-The center can only reach:
-
-    -width / 2 + radius
-
-
-Six surfaces are checked:
-
-    left
-    right
-    bottom
-    top
-    front
-    back
-
-The collision time is calculated so that the ball can stop
-at the wall instead of moving through it.
-
-============================================================
-*/
 
 
 struct CollisionInfo
 {
     bool collision;
-
     float time;
-
     Vector3 normal;
 };
 
 
-CollisionInfo findCollision(
-    Ball &ball,
-    Box &box,
-    float dt)
+CollisionInfo findCollision(Ball &ball,Box &box,float dt)
 {
     CollisionInfo result;
-
     result.collision = false;
     result.time = dt;
+    result.normal = { 0,0,0};
+    float minX = -box.width / 2.0f +ball.radius;
+    float maxX = box.width / 2.0f -ball.radius;
+    float minY = -box.height / 2.0f + ball.radius;
 
-    result.normal = {
-        0,
-        0,
-        0
-    };
+    float maxY =  box.height / 2.0f -ball.radius;
 
-
-    float minX =
-        -box.width / 2.0f +
-        ball.radius;
-
-    float maxX =
-        box.width / 2.0f -
-        ball.radius;
-
-
-    float minY =
-        -box.height / 2.0f +
-        ball.radius;
-
-    float maxY =
-        box.height / 2.0f -
-        ball.radius;
-
-
-    float minZ =
-        -box.depth / 2.0f +
-        ball.radius;
-
-    float maxZ =
-        box.depth / 2.0f -
-        ball.radius;
-
-
+    float minZ = -box.depth / 2.0f + ball.radius;
+    float maxZ =box.depth / 2.0f - ball.radius;
     Vector3 predicted;
+    predicted.x = ball.position.x + ball.velocity.x * dt;
 
-    predicted.x =
-        ball.position.x +
-        ball.velocity.x * dt;
+    predicted.y =ball.position.y +ball.velocity.y * dt;
 
-    predicted.y =
-        ball.position.y +
-        ball.velocity.y * dt;
+    predicted.z =ball.position.z + ball.velocity.z * dt;
 
-    predicted.z =
-        ball.position.z +
-        ball.velocity.z * dt;
-
-
-    // --------------------------------------------------------
-    // LEFT
-    // --------------------------------------------------------
-
-    if (ball.velocity.x < 0 &&
-        predicted.x < minX)
+    if (ball.velocity.x < 0 && predicted.x < minX)
     {
-        float t =
-            (minX - ball.position.x) /
-            ball.velocity.x;
+        float t = (minX - ball.position.x) / ball.velocity.x;
+        if (t >= 0 && t <= result.time)
+        {
+            result.collision = true;
+            result.time = t;
+            result.normal = {1,0,0};
+        }
+    }
+
+
+//check right wall collision
+
+    if (ball.velocity.x > 0 && predicted.x > maxX)
+    {
+        float t = (maxX - ball.position.x) / ball.velocity.x;
 
 
         if (t >= 0 &&
@@ -1095,79 +565,35 @@ CollisionInfo findCollision(
             result.collision = true;
             result.time = t;
 
-            result.normal = {
-                1,
-                0,
-                0
-            };
+            result.normal = {-1,0,  0};
         }
     }
 
 
-    // --------------------------------------------------------
-    // RIGHT
-    // --------------------------------------------------------
+//Check bottom wall collision
 
-    if (ball.velocity.x > 0 &&
-        predicted.x > maxX)
+    if (ball.velocity.y < 0 && predicted.y < minY)
     {
         float t =
-            (maxX - ball.position.x) /
-            ball.velocity.x;
+            (minY - ball.position.y) / ball.velocity.y;
 
 
-        if (t >= 0 &&
-            t <= result.time)
+        if (t >= 0 && t <= result.time)
         {
             result.collision = true;
             result.time = t;
 
-            result.normal = {
-                -1,
-                0,
-                0
-            };
+            result.normal = {0,1,0};
         }
     }
 
 
-    // --------------------------------------------------------
-    // BOTTOM
-    // --------------------------------------------------------
-
-    if (ball.velocity.y < 0 &&
-        predicted.y < minY)
-    {
-        float t =
-            (minY - ball.position.y) /
-            ball.velocity.y;
-
-
-        if (t >= 0 &&
-            t <= result.time)
-        {
-            result.collision = true;
-            result.time = t;
-
-            result.normal = {
-                0,
-                1,
-                0
-            };
-        }
-    }
-
-
-    // --------------------------------------------------------
-    // TOP
-    // --------------------------------------------------------
+    //Check top wall collision
 
     if (ball.velocity.y > 0 &&
         predicted.y > maxY)
     {
-        float t =
-            (maxY - ball.position.y) /
-            ball.velocity.y;
+        float t =(maxY - ball.position.y) / ball.velocity.y;
 
 
         if (t >= 0 &&
@@ -1175,66 +601,37 @@ CollisionInfo findCollision(
         {
             result.collision = true;
             result.time = t;
-
-            result.normal = {
-                0,
-                -1,
-                0
-            };
+            result.normal = { 0,-1, 0};
         }
     }
-
-
-    // --------------------------------------------------------
-    // FRONT
-    // --------------------------------------------------------
 
     if (ball.velocity.z < 0 &&
         predicted.z < minZ)
     {
-        float t =
-            (minZ - ball.position.z) /
-            ball.velocity.z;
+        float t = (minZ - ball.position.z) / ball.velocity.z;
 
 
-        if (t >= 0 &&
-            t <= result.time)
+        if (t >= 0 && t <= result.time)
         {
             result.collision = true;
             result.time = t;
 
-            result.normal = {
-                0,
-                0,
-                1
-            };
+            result.normal = { 0, 0, 1};
         }
     }
 
 
-    // --------------------------------------------------------
-    // BACK
-    // --------------------------------------------------------
+    //Check back wall collision
 
     if (ball.velocity.z > 0 &&
         predicted.z > maxZ)
     {
-        float t =
-            (maxZ - ball.position.z) /
-            ball.velocity.z;
-
-
-        if (t >= 0 &&
-            t <= result.time)
+        float t =(maxZ - ball.position.z) /ball.velocity.z;
+        if (t >= 0 && t <= result.time)
         {
             result.collision = true;
             result.time = t;
-
-            result.normal = {
-                0,
-                0,
-                -1
-            };
+            result.normal = {  0,  0,  -1 };
         }
     }
 
@@ -1243,41 +640,10 @@ CollisionInfo findCollision(
 }
 
 
-/*
-============================================================
 
-                COLLISION RESPONSE
-
-============================================================
-
-The velocity is split into:
-
-    Normal component
-    Tangential component
-
-
-Restitution changes the normal component:
-
-    vn_new = -e * vn_old
-
-
-where e is the coefficient of restitution.
-
-Friction reduces the tangential velocity.
-
-============================================================
-*/
-
-
-void resolveCollision(
-    Ball &ball,
-    Vector3 normal,
-    Physics &physics)
+void resolveCollision(Ball &ball,Vector3 normal,Physics &physics)
 {
-    float normalVelocity =
-        ball.velocity.x * normal.x +
-        ball.velocity.y * normal.y +
-        ball.velocity.z * normal.z;
+    float normalVelocity = ball.velocity.x * normal.x + ball.velocity.y * normal.y +ball.velocity.z * normal.z;
 
 
     if (normalVelocity >= 0)
@@ -1286,155 +652,75 @@ void resolveCollision(
 
     Vector3 normalPart;
 
-    normalPart.x =
-        normal.x *
-        normalVelocity;
+    normalPart.x = normal.x *    normalVelocity;
 
-    normalPart.y =
-        normal.y *
-        normalVelocity;
+    normalPart.y =  normal.y * normalVelocity;
 
-    normalPart.z =
-        normal.z *
-        normalVelocity;
+    normalPart.z =  normal.z * normalVelocity;
 
 
     Vector3 tangentPart;
 
-    tangentPart.x =
-        ball.velocity.x -
-        normalPart.x;
+    tangentPart.x = ball.velocity.x - normalPart.x;
 
-    tangentPart.y =
-        ball.velocity.y -
-        normalPart.y;
+    tangentPart.y = ball.velocity.y - normalPart.y;
 
-    tangentPart.z =
-        ball.velocity.z -
-        normalPart.z;
-
+    tangentPart.z = ball.velocity.z -normalPart.z;
 
     // Restitution
 
-    normalPart.x *=
-        -physics.restitution;
-
-    normalPart.y *=
-        -physics.restitution;
-
-    normalPart.z *=
-        -physics.restitution;
+    normalPart.x *=  -physics.restitution;
+    normalPart.y *=-physics.restitution;
+    normalPart.z *= -physics.restitution;
 
 
     // Friction
 
-    tangentPart.x *=
-        (1.0f - physics.friction);
+    tangentPart.x *= (1.0f - physics.friction);
 
-    tangentPart.y *=
-        (1.0f - physics.friction);
+    tangentPart.y *=(1.0f - physics.friction);
 
-    tangentPart.z *=
-        (1.0f - physics.friction);
+    tangentPart.z *= (1.0f - physics.friction);
 
 
-    ball.velocity.x =
-        normalPart.x +
-        tangentPart.x;
+    ball.velocity.x =  normalPart.x + tangentPart.x;
 
-    ball.velocity.y =
-        normalPart.y +
-        tangentPart.y;
+    ball.velocity.y = normalPart.y + tangentPart.y;
 
-    ball.velocity.z =
-        normalPart.z +
-        tangentPart.z;
+    ball.velocity.z =normalPart.z +  tangentPart.z;
 }
 
 
-/*
-============================================================
-
-                 FRACTIONAL TIMESTEP
-
-============================================================
-
-Suppose:
-
-        dt = 0.01 seconds
-
-but the collision happens at:
-
-        t = 0.006 seconds
-
-
-We do NOT simply move the ball for the complete 0.01
-seconds.
-
-Instead:
-
-        1. Integrate for 0.006 seconds
-        2. Resolve the collision
-        3. Integrate for the remaining 0.004 seconds
-
-This is the fractional timestep approach required by
-the assignment.
-
-============================================================
-*/
-
-
-void updateSimulation(
-    Ball &ball,
-    Box &box,
-    Physics &physics)
+void updateSimulation(Ball &ball,Box &box,Physics &physics)
 {
-    float remainingTime =
-        physics.timestep;
+    float remainingTime = physics.timestep;
 
 
     int iterations = 0;
 
 
     while (
-        remainingTime > 0.000001f &&
-        iterations < 10)
+        remainingTime > 0.000001f &&iterations < 10)
     {
-        CollisionInfo collision =
-            findCollision(
-                ball,
-                box,
-                remainingTime
+        CollisionInfo collision =findCollision(  ball, box,remainingTime
             );
 
 
         if (!collision.collision)
         {
-            eulerIntegration(
-                ball,
-                box,
-                physics,
-                remainingTime
-            );
-
+            eulerIntegration(ball,box,physics,remainingTime);
             remainingTime = 0;
 
             break;
         }
 
 
-        float collisionTime =
-            collision.time;
+        float collisionTime =collision.time;
 
 
         if (collisionTime > 0.000001f)
         {
-            eulerIntegration(
-                ball,
-                box,
-                physics,
-                collisionTime
-            );
+            eulerIntegration(ball, box,physics,collisionTime   );
         }
 
 
@@ -1442,118 +728,77 @@ void updateSimulation(
 
         if (collision.normal.x > 0.5f)
         {
-            ball.position.x =
-                -box.width / 2.0f +
-                ball.radius;
+            ball.position.x =-box.width / 2.0f +ball.radius;
         }
 
 
         if (collision.normal.x < -0.5f)
         {
-            ball.position.x =
-                box.width / 2.0f -
-                ball.radius;
+            ball.position.x = box.width / 2.0f -ball.radius;
         }
 
 
         if (collision.normal.y > 0.5f)
         {
-            ball.position.y =
-                -box.height / 2.0f +
-                ball.radius;
+            ball.position.y = -box.height / 2.0f + ball.radius;
         }
 
 
         if (collision.normal.y < -0.5f)
         {
-            ball.position.y =
-                box.height / 2.0f -
-                ball.radius;
+            ball.position.y = box.height / 2.0f - ball.radius;
         }
 
 
         if (collision.normal.z > 0.5f)
         {
-            ball.position.z =
-                -box.depth / 2.0f +
-                ball.radius;
+            ball.position.z = -box.depth / 2.0f +ball.radius;
         }
 
 
         if (collision.normal.z < -0.5f)
         {
-            ball.position.z =
-                box.depth / 2.0f -
-                ball.radius;
+            ball.position.z = box.depth / 2.0f - ball.radius;
         }
 
 
         // Collision response
 
-        resolveCollision(
-            ball,
-            collision.normal,
-            physics
-        );
+        resolveCollision(ball,collision.normal,physics);
 
 
-        remainingTime -=
-            collisionTime;
+        remainingTime -=collisionTime;
 
 
-        // Small offset to prevent repeated collision
+        // Small offset to prevent repeated collision - Suggested by AI
 
-        ball.position.x +=
-            collision.normal.x *
-            0.00001f;
+        ball.position.x += collision.normal.x * 0.00001f;
 
-        ball.position.y +=
-            collision.normal.y *
-            0.00001f;
-
-        ball.position.z +=
-            collision.normal.z *
-            0.00001f;
-
-
+        ball.position.y += collision.normal.y * 0.00001f;
+        ball.position.z += collision.normal.z * 0.00001f;
         iterations++;
-
-
         if (collisionTime < 0.000001f)
         {
-            remainingTime -=
-                0.000001f;
+            remainingTime -= 0.000001f;
         }
     }
 
 
     // Final safety checks
 
-    float minX =
-        -box.width / 2.0f +
-        ball.radius;
+    float minX =  -box.width / 2.0f +  ball.radius;
 
-    float maxX =
-        box.width / 2.0f -
-        ball.radius;
+    float maxX = box.width / 2.0f -  ball.radius;
 
 
-    float minY =
-        -box.height / 2.0f +
-        ball.radius;
+    float minY =  -box.height / 2.0f +  ball.radius;
 
-    float maxY =
-        box.height / 2.0f -
-        ball.radius;
+    float maxY =  box.height / 2.0f -  ball.radius;
 
 
-    float minZ =
-        -box.depth / 2.0f +
-        ball.radius;
+    float minZ = -box.depth / 2.0f + ball.radius;
 
-    float maxZ =
-        box.depth / 2.0f -
-        ball.radius;
+    float maxZ =   box.depth / 2.0f -   ball.radius;
 
 
     if (ball.position.x < minX)
@@ -1578,13 +823,7 @@ void updateSimulation(
 }
 
 
-// ------------------------------------------------------------
-// NUMBER FORMATTING
-// ------------------------------------------------------------
-
-string formatNumber(
-    float number,
-    int decimals = 2)
+string formatNumber(float number, int decimals = 2)
 {
     stringstream stream;
 
@@ -1595,10 +834,10 @@ string formatNumber(
     return stream.str();
 }
 
-
-// ------------------------------------------------------------
-// DRAW INPUT SCREEN
-// ------------------------------------------------------------
+/*
+===================================================
+Below portion for the UI has been coded using the help of AI
+====================================================*/
 
 void drawInputScreen(
     int screenWidth,
