@@ -1,153 +1,52 @@
 #include "raylib.h"
-
-#include <cmath>
-#include <algorithm>
-#include <iomanip>
-#include <sstream>
+#include <iostream>
 #include <string>
+#include <cmath>
+#include <sstream>
+#include <iomanip>
+
+using namespace std;
 
 
 /*
-======================================================================
+============================================================
 
-        FOUNDATIONS OF PHYSICALLY BASED MODELING
-                    ASSIGNMENT 1
+        PHYSICALLY BASED MODELING AND ANIMATION
 
-              BOUNCING BALL IN A BOX
+                  ASSIGNMENT 1
 
-======================================================================
+             BOUNCING BALL SIMULATION
 
-MAIN OBJECTIVE
+============================================================
 
-    Simulate a spherical ball moving inside a six-sided box.
+The simulation contains:
 
-    The simulation includes:
+    - Gravity
+    - User-defined wind
+    - Spatially varying air resistance
+    - Collision detection
+    - Collision response
+    - Friction
+    - Coefficient of restitution
+    - Euler integration
+    - Variable timestep
+    - Fractional timestep collision handling
+    - Six-sided box
 
-        1. Gravity
-        2. Wind force
-        3. Spatially varying air resistance
-        4. Collision detection
-        5. Collision response
-        6. Friction
-        7. Restitution
-        8. Euler integration
-        9. Fractional timesteps
-       10. Adjustable physics timestep
+Gravity is fixed at:
 
+                    (0, -9.81, 0)
 
-USER INPUT
+The other environmental parameters can be changed by
+the user before starting the simulation.
 
-    The user can specify:
-
-        - Ball radius
-        - Ball mass
-        - Starting position
-        - Starting velocity
-        - Box width
-        - Box height
-        - Box depth
-
-
-NOVELTY
-
-    The air resistance is spatially varying.
-
-    Instead of having the same drag everywhere, the box contains
-    a smooth region where the air is denser.
-
-    The resistance is:
-
-        HIGHER around the central region
-
-        LOWER near the walls
-
-    The drag does NOT stop the ball immediately.
-
-    This allows us to clearly observe the effect of the
-    spatially varying force while still allowing the ball
-    to bounce around the box.
-
-
-IMPORTANT ASSIGNMENT REQUIREMENT
-
-    The following parts are intentionally implemented directly:
-
-        - Simulation loop / timestepping
-        - Force calculation
-        - Euler integration
-        - Collision detection and response
-
-
-RAYLIB
-
-    Raylib is used only for:
-
-        - Window
-        - Camera
-        - Keyboard input
-        - Rendering
-        - User interface
-
-======================================================================
+============================================================
 */
 
 
-// ====================================================================
-// BASIC VECTOR OPERATIONS
-// ====================================================================
-
-Vector3 Add(Vector3 a, Vector3 b)
-{
-    return {
-        a.x + b.x,
-        a.y + b.y,
-        a.z + b.z
-    };
-}
-
-
-Vector3 Subtract(Vector3 a, Vector3 b)
-{
-    return {
-        a.x - b.x,
-        a.y - b.y,
-        a.z - b.z
-    };
-}
-
-
-Vector3 Multiply(Vector3 a, float value)
-{
-    return {
-        a.x * value,
-        a.y * value,
-        a.z * value
-    };
-}
-
-
-float Dot(Vector3 a, Vector3 b)
-{
-    return
-        a.x * b.x +
-        a.y * b.y +
-        a.z * b.z;
-}
-
-
-float Length(Vector3 a)
-{
-    return std::sqrt(
-        a.x * a.x +
-        a.y * a.y +
-        a.z * a.z
-    );
-}
-
-
-// ====================================================================
-// DATA STRUCTURES
-// ====================================================================
+// ------------------------------------------------------------
+// STRUCTURES
+// ------------------------------------------------------------
 
 struct Ball
 {
@@ -169,250 +68,278 @@ struct Box
 };
 
 
-/*
-    Parameters controlling the spatial air resistance.
-
-    baseDrag:
-
-        A small amount of drag that exists everywhere.
-
-    centerStrength:
-
-        Additional drag around the central region.
-
-    falloff:
-
-        Controls how quickly the additional drag disappears
-        as we move away from the central region.
-*/
-struct SpatialDragField
+struct Physics
 {
-    float baseDrag;
-    float centerStrength;
-    float falloff;
-};
-
-
-struct PhysicsParameters
-{
+    // Gravity is fixed for this assignment.
     Vector3 gravity;
 
+    // User controlled environment
     Vector3 wind;
 
-    SpatialDragField dragField;
+    float baseDrag;
+    float centreDrag;
+    float dragFalloff;
 
     float restitution;
-
     float friction;
+
+    // User controlled timestep
+    float timestep;
 };
 
-
-struct Simulation
-{
-    Ball ball;
-
-    double simulationTime;
-
-    unsigned long long collisionCount;
-
-    float physicsDt;
-
-    bool paused;
-    bool running;
-};
-
-
-// ====================================================================
-// USER INPUT
-// ====================================================================
 
 struct InputField
 {
-    std::string label;
-    std::string value;
+    string name;
+    string value;
 
     Rectangle rectangle;
 
-    bool active;
+    bool selected;
 };
 
 
-InputField fields[11];
+// ------------------------------------------------------------
+// GLOBAL VARIABLES
+// ------------------------------------------------------------
 
-int activeField = 0;
+const int NUMBER_OF_FIELDS = 21;
 
-std::string errorMessage;
+InputField inputFields[NUMBER_OF_FIELDS];
+
+int selectedField = 0;
+
+string errorMessage = "";
+
+bool simulationStarted = false;
+
+bool paused = false;
 
 
-// ====================================================================
-// INITIAL VALUES
-// ====================================================================
+// ------------------------------------------------------------
+// INPUT FIELD SETUP
+// ------------------------------------------------------------
 
-void InitializeFields()
+void setupInputFields()
 {
     /*
-        These values are deliberately chosen so that the default
-        demonstration produces a clearly visible bouncing path.
+        These are the default values.
 
-        The starting velocity has components in all three axes.
+        The starting position and velocity are deliberately
+        not symmetric.
 
-        Therefore the ball does not simply fall vertically onto
-        the bottom surface.
+        This makes the ball travel diagonally and gives it
+        opportunities to hit different sides of the box.
 
-        Instead, it travels through the box and can hit:
-
-            left / right
-            top / bottom
-            front / back
+        The timestep is also explicitly shown here because
+        changing dt is one of the requirements of the assignment.
     */
 
-    fields[0] = {
+
+    // ---------------- BALL ----------------
+
+    inputFields[0] = {
         "Ball Radius",
         "0.45",
-        {390, 110, 220, 35},
-        false
+        {350, 70, 220, 30},
+        true
     };
 
-    fields[1] = {
+    inputFields[1] = {
         "Ball Mass",
         "1.0",
-        {390, 155, 220, 35},
+        {350, 105, 220, 30},
         false
     };
 
 
-    fields[2] = {
+    // ----------- POSITION -----------------
+
+    inputFields[2] = {
         "Position X",
         "-3.0",
-        {390, 225, 220, 35},
+        {350, 160, 220, 30},
         false
     };
 
-    fields[3] = {
+    inputFields[3] = {
         "Position Y",
         "1.5",
-        {390, 270, 220, 35},
+        {350, 195, 220, 30},
         false
     };
 
-    fields[4] = {
+    inputFields[4] = {
         "Position Z",
         "-3.0",
-        {390, 315, 220, 35},
+        {350, 230, 220, 30},
         false
     };
 
 
-    /*
-        Initial velocity.
+    // ----------- VELOCITY -----------------
 
-        X positive:
-
-            moves toward the right wall.
-
-        Y positive:
-
-            moves upward toward the top.
-
-        Z positive:
-
-            moves toward the back wall.
-
-        After the first collisions, the velocity components
-        reverse and the ball begins travelling in other directions.
-    */
-
-    fields[5] = {
+    inputFields[5] = {
         "Velocity X",
         "6.0",
-        {390, 385, 220, 35},
+        {350, 285, 220, 30},
         false
     };
 
-    fields[6] = {
+    inputFields[6] = {
         "Velocity Y",
         "7.0",
-        {390, 430, 220, 35},
+        {350, 320, 220, 30},
         false
     };
 
-    fields[7] = {
+    inputFields[7] = {
         "Velocity Z",
         "6.5",
-        {390, 475, 220, 35},
+        {350, 355, 220, 30},
         false
     };
 
 
-    /*
-        A relatively large box is used.
+    // ------------ BOX ---------------------
 
-        This gives the ball enough distance to travel before
-        reaching another surface.
-    */
-
-    fields[8] = {
+    inputFields[8] = {
         "Box Width",
         "12.0",
-        {390, 545, 220, 35},
+        {350, 410, 220, 30},
         false
     };
 
-    fields[9] = {
+    inputFields[9] = {
         "Box Height",
         "10.0",
-        {390, 590, 220, 35},
+        {350, 445, 220, 30},
         false
     };
 
-    fields[10] = {
+    inputFields[10] = {
         "Box Depth",
         "12.0",
-        {390, 635, 220, 35},
+        {350, 480, 220, 30},
         false
     };
 
 
-    activeField = 0;
+    // ------------ WIND --------------------
 
-    fields[0].active = true;
+    inputFields[11] = {
+        "Wind X",
+        "0.35",
+        {350, 535, 220, 30},
+        false
+    };
 
-    errorMessage.clear();
+    inputFields[12] = {
+        "Wind Y",
+        "0.0",
+        {350, 570, 220, 30},
+        false
+    };
+
+    inputFields[13] = {
+        "Wind Z",
+        "-0.25",
+        {350, 605, 220, 30},
+        false
+    };
+
+
+    // ----------- PHYSICS ------------------
+
+    inputFields[14] = {
+        "Restitution",
+        "0.88",
+        {900, 80, 220, 30},
+        false
+    };
+
+    inputFields[15] = {
+        "Friction",
+        "0.03",
+        {900, 115, 220, 30},
+        false
+    };
+
+    inputFields[16] = {
+        "Timestep",
+        "0.005",
+        {900, 150, 220, 30},
+        false
+    };
+
+
+    // -------- SPATIAL DRAG ----------------
+
+    inputFields[17] = {
+        "Base Drag",
+        "0.002",
+        {900, 210, 220, 30},
+        false
+    };
+
+    inputFields[18] = {
+        "Centre Drag",
+        "0.018",
+        {900, 245, 220, 30},
+        false
+    };
+
+    inputFields[19] = {
+        "Drag Falloff",
+        "2.0",
+        {900, 280, 220, 30},
+        false
+    };
+
+
+    // ----------- GRAVITY ------------------
+
+    /*
+        Gravity is intentionally NOT an input.
+
+        It is fixed at -9.81 m/s^2 in the Y direction.
+    */
+
+    inputFields[20] = {
+        "Gravity",
+        "-9.81 m/s2",
+        {900, 350, 220, 30},
+        false
+    };
 }
 
 
-// ====================================================================
-// FLOAT PARSING
-// ====================================================================
+// ------------------------------------------------------------
+// STRING TO FLOAT
+// ------------------------------------------------------------
 
-bool ParseFloat(
-    const std::string& text,
-    float& result)
+bool stringToFloat(
+    string text,
+    float &number)
 {
-    if (text.empty())
+    if (text.length() == 0)
         return false;
-
 
     try
     {
-        size_t position = 0;
+        size_t position;
 
-        float value =
-            std::stof(
+        number =
+            stof(
                 text,
                 &position
             );
 
-
         if (position != text.length())
             return false;
 
-
-        if (!std::isfinite(value))
+        if (!isfinite(number))
             return false;
-
-
-        result = value;
 
         return true;
     }
@@ -423,47 +350,46 @@ bool ParseFloat(
 }
 
 
-// ====================================================================
-// GET FIELD VALUE
-// ====================================================================
+// ------------------------------------------------------------
+// GET INPUT VALUE
+// ------------------------------------------------------------
 
-bool GetValue(
+bool getInputValue(
     int index,
-    float& value)
+    float &value)
 {
-    return ParseFloat(
-        fields[index].value,
+    return stringToFloat(
+        inputFields[index].value,
         value
     );
 }
 
 
-// ====================================================================
-// VALIDATION
-// ====================================================================
+// ------------------------------------------------------------
+// VALIDATE INPUT
+// ------------------------------------------------------------
 
-bool ValidateInput(
-    float radius,
-    float mass,
-    Vector3 position,
-    const Box& box)
+bool validateInput(
+    Ball &ball,
+    Box &box,
+    Physics &physics)
 {
-    errorMessage.clear();
+    errorMessage = "";
 
 
-    if (radius <= 0)
+    if (ball.radius <= 0)
     {
         errorMessage =
-            "ERROR: Ball radius must be greater than 0.";
+            "Ball radius must be greater than zero.";
 
         return false;
     }
 
 
-    if (mass <= 0)
+    if (ball.mass <= 0)
     {
         errorMessage =
-            "ERROR: Ball mass must be greater than 0.";
+            "Ball mass must be greater than zero.";
 
         return false;
     }
@@ -474,65 +400,133 @@ bool ValidateInput(
         box.depth <= 0)
     {
         errorMessage =
-            "ERROR: Box dimensions must be greater than 0.";
+            "All box dimensions must be greater than zero.";
 
         return false;
     }
 
 
-    if (box.width <= radius * 2 ||
-        box.height <= radius * 2 ||
-        box.depth <= radius * 2)
+    if (physics.timestep <= 0)
     {
         errorMessage =
-            "ERROR: Ball is too large for the box.";
+            "Timestep must be greater than zero.";
 
         return false;
     }
 
 
+    if (physics.timestep > 0.1f)
+    {
+        errorMessage =
+            "Timestep is too large. Use a value <= 0.1.";
+
+        return false;
+    }
+
+
+    if (physics.restitution < 0 ||
+        physics.restitution > 1)
+    {
+        errorMessage =
+            "Restitution must be between 0 and 1.";
+
+        return false;
+    }
+
+
+    if (physics.friction < 0 ||
+        physics.friction > 1)
+    {
+        errorMessage =
+            "Friction must be between 0 and 1.";
+
+        return false;
+    }
+
+
+    if (physics.baseDrag < 0)
+    {
+        errorMessage =
+            "Base drag cannot be negative.";
+
+        return false;
+    }
+
+
+    if (physics.centreDrag < 0)
+    {
+        errorMessage =
+            "Centre drag cannot be negative.";
+
+        return false;
+    }
+
+
+    if (physics.dragFalloff <= 0)
+    {
+        errorMessage =
+            "Drag falloff must be greater than zero.";
+
+        return false;
+    }
+
+
+    /*
+        Check whether the ball fits inside the box.
+    */
+
     float minX =
-        box.center.x -
-        box.width / 2.0f +
-        radius;
+        -box.width / 2.0f +
+        ball.radius;
 
     float maxX =
-        box.center.x +
         box.width / 2.0f -
-        radius;
+        ball.radius;
 
 
     float minY =
-        box.center.y -
-        box.height / 2.0f +
-        radius;
+        -box.height / 2.0f +
+        ball.radius;
 
     float maxY =
-        box.center.y +
         box.height / 2.0f -
-        radius;
+        ball.radius;
 
 
     float minZ =
-        box.center.z -
-        box.depth / 2.0f +
-        radius;
+        -box.depth / 2.0f +
+        ball.radius;
 
     float maxZ =
-        box.center.z +
         box.depth / 2.0f -
-        radius;
+        ball.radius;
 
 
-    if (position.x < minX ||
-        position.x > maxX ||
-        position.y < minY ||
-        position.y > maxY ||
-        position.z < minZ ||
-        position.z > maxZ)
+    if (ball.position.x < minX ||
+        ball.position.x > maxX)
     {
         errorMessage =
-            "ERROR: Starting position is outside the box.";
+            "Starting X position is outside the box.";
+
+        return false;
+    }
+
+
+    if (ball.position.y < minY ||
+        ball.position.y > maxY)
+    {
+        errorMessage =
+            "Starting Y position is outside the box.";
+
+        return false;
+    }
+
+
+    if (ball.position.z < minZ ||
+        ball.position.z > maxZ)
+    {
+        errorMessage =
+            "Starting Z position is outside the box.";
 
         return false;
     }
@@ -542,18 +536,131 @@ bool ValidateInput(
 }
 
 
-// ====================================================================
-// PHYSICS PARAMETERS
-// ====================================================================
+// ------------------------------------------------------------
+// CREATE SIMULATION
+// ------------------------------------------------------------
 
-void CreatePhysics(
-    PhysicsParameters& physics)
+bool createSimulation(
+    Ball &ball,
+    Box &box,
+    Physics &physics)
 {
-    /*
-        Gravity.
+    float values[20];
 
-        Negative Y means downward because our coordinate system
-        uses positive Y as upward.
+
+    /*
+        Gravity field is not converted because it is just
+        displayed as information.
+
+        There are 20 actual editable numerical fields.
+    */
+
+    for (int i = 0; i < 20; i++)
+    {
+        if (!getInputValue(
+                i,
+                values[i]))
+        {
+            errorMessage =
+                "Invalid numerical value. Please check the fields.";
+
+            return false;
+        }
+    }
+
+
+    // ---------------- BALL ----------------
+
+    ball.radius =
+        values[0];
+
+    ball.mass =
+        values[1];
+
+
+    // ------------- POSITION ---------------
+
+    ball.position.x =
+        values[2];
+
+    ball.position.y =
+        values[3];
+
+    ball.position.z =
+        values[4];
+
+
+    // ------------- VELOCITY ---------------
+
+    ball.velocity.x =
+        values[5];
+
+    ball.velocity.y =
+        values[6];
+
+    ball.velocity.z =
+        values[7];
+
+
+    // ---------------- BOX -----------------
+
+    box.width =
+        values[8];
+
+    box.height =
+        values[9];
+
+    box.depth =
+        values[10];
+
+
+    box.center = {
+        0,
+        0,
+        0
+    };
+
+
+    // ---------------- WIND ----------------
+
+    physics.wind.x =
+        values[11];
+
+    physics.wind.y =
+        values[12];
+
+    physics.wind.z =
+        values[13];
+
+
+    // ------------- PHYSICS ----------------
+
+    physics.restitution =
+        values[14];
+
+    physics.friction =
+        values[15];
+
+    physics.timestep =
+        values[16];
+
+
+    // ------------- SPATIAL DRAG -----------
+
+    physics.baseDrag =
+        values[17];
+
+    physics.centreDrag =
+        values[18];
+
+    physics.dragFalloff =
+        values[19];
+
+
+    /*
+        Gravity is fixed.
+
+        It is not read from user input.
     */
 
     physics.gravity = {
@@ -563,242 +670,105 @@ void CreatePhysics(
     };
 
 
-    /*
-        Wind is represented as an external force.
-
-        It is intentionally not extremely large because we want
-        gravity and collision response to remain clearly visible.
-    */
-
-    physics.wind = {
-        0.35f,
-        0.0f,
-        -0.25f
-    };
+    if (!validateInput(
+            ball,
+            box,
+            physics))
+    {
+        return false;
+    }
 
 
-    /*
-        RESTITUTION
-
-        1.0 = perfectly elastic collision
-
-        0.0 = no bounce
-
-        0.88 means that most of the normal velocity is retained
-        after the collision.
-    */
-
-    physics.restitution =
-        0.88f;
-
-
-    /*
-        FRICTION
-
-        This reduces the velocity parallel to the surface.
-
-        A small value means the ball continues sliding/bouncing
-        instead of losing all of its tangential motion.
-    */
-
-    physics.friction =
-        0.03f;
-
-
-    /*
-        SPATIAL AIR RESISTANCE
-
-        The previous version used a very strong drag coefficient.
-        That caused the ball to lose energy too quickly.
-
-        These values are deliberately smaller.
-
-        baseDrag:
-
-            Small resistance everywhere.
-
-        centerStrength:
-
-            Additional resistance in the central region.
-
-        falloff:
-
-            Determines how quickly the extra resistance decreases.
-    */
-
-    physics.dragField.baseDrag =
-        0.002f;
-
-    physics.dragField.centerStrength =
-        0.018f;
-
-    physics.dragField.falloff =
-        2.0f;
+    return true;
 }
 
 
-// ====================================================================
-// BOX LIMITS
-// ====================================================================
+/*
+============================================================
 
-float MinimumX(
-    const Box& box,
-    const Ball& ball)
-{
-    return
-        box.center.x -
-        box.width / 2.0f +
-        ball.radius;
-}
+             SPATIAL AIR RESISTANCE
 
+============================================================
 
-float MaximumX(
-    const Box& box,
-    const Ball& ball)
-{
-    return
-        box.center.x +
-        box.width / 2.0f -
-        ball.radius;
-}
+The air resistance changes depending on where the ball is.
+
+The centre of the box has the strongest air resistance.
+
+The resistance gets weaker as the ball approaches the
+faces of the box.
+
+The function is:
+
+    k(x) =
+        baseDrag +
+        centreDrag * exp(-falloff * distanceSquared)
 
 
-float MinimumY(
-    const Box& box,
-    const Ball& ball)
-{
-    return
-        box.center.y -
-        box.height / 2.0f +
-        ball.radius;
-}
+At the centre:
+
+    distanceSquared = 0
+
+    exp(0) = 1
+
+Therefore:
+
+    k = baseDrag + centreDrag
 
 
-float MaximumY(
-    const Box& box,
-    const Ball& ball)
-{
-    return
-        box.center.y +
-        box.height / 2.0f -
-        ball.radius;
-}
+Farther away from the centre:
+
+    exp(-falloff * distanceSquared)
+
+becomes smaller.
+
+Therefore the drag approaches:
+
+    baseDrag
+
+This gives us a spatially varying environment rather than
+a single constant air resistance.
+
+============================================================
+*/
 
 
-float MinimumZ(
-    const Box& box,
-    const Ball& ball)
-{
-    return
-        box.center.z -
-        box.depth / 2.0f +
-        ball.radius;
-}
-
-
-float MaximumZ(
-    const Box& box,
-    const Ball& ball)
-{
-    return
-        box.center.z +
-        box.depth / 2.0f -
-        ball.radius;
-}
-
-
-// ====================================================================
-// SPATIAL AIR RESISTANCE
-// ====================================================================
-
-float CalculateSpatialDrag(
+float calculateDrag(
     Vector3 position,
-    const Box& box,
-    const PhysicsParameters& physics)
+    Box &box,
+    Physics &physics)
 {
-    /*
-        We first measure how far the ball is from the center
-        of the box.
-
-        Each axis is normalized by the half-dimension of the box.
-
-        This gives approximately:
-
-            center -> 0
-
-            outer region -> 1
-    */
-
-    float halfWidth =
-        box.width / 2.0f;
-
-    float halfHeight =
-        box.height / 2.0f;
-
-    float halfDepth =
-        box.depth / 2.0f;
-
-
-    float nx =
+    float dx =
         (position.x - box.center.x) /
-        halfWidth;
+        (box.width / 2.0f);
 
-    float ny =
+
+    float dy =
         (position.y - box.center.y) /
-        halfHeight;
+        (box.height / 2.0f);
 
-    float nz =
+
+    float dz =
         (position.z - box.center.z) /
-        halfDepth;
+        (box.depth / 2.0f);
 
-
-    /*
-        Squared distance from the center.
-
-        We do not need sqrt() because we only need the magnitude
-        for the exponential function.
-
-        This produces an ellipsoidal region of stronger resistance.
-    */
 
     float distanceSquared =
-        nx * nx +
-        ny * ny +
-        nz * nz;
+        dx * dx +
+        dy * dy +
+        dz * dz;
 
 
-    /*
-        Gaussian-like falloff.
-
-            exp(-falloff * distanceSquared)
-
-        is approximately:
-
-            1 near the center
-
-            0 far away from the center
-    */
-
-    float centerInfluence =
-        std::exp(
-            -physics.dragField.falloff *
+    float centreEffect =
+        exp(
+            -physics.dragFalloff *
             distanceSquared
         );
 
 
-    /*
-        Finally:
-
-            total drag =
-                base drag
-                +
-                additional central drag
-    */
-
     float drag =
-        physics.dragField.baseDrag +
-        physics.dragField.centerStrength *
-        centerInfluence;
+        physics.baseDrag +
+        physics.centreDrag *
+        centreEffect;
 
 
     return drag;
@@ -806,264 +776,241 @@ float CalculateSpatialDrag(
 
 
 /*
-======================================================================
+============================================================
 
-                    CODE YOURSELF
+                 CALCULATION OF FORCES
 
-                CALCULATION OF FORCES
+============================================================
 
-======================================================================
+The total force is:
 
-The acceleration of the ball is calculated from the forces acting
-on it.
+        Ftotal =
+        Fgravity +
+        Fwind +
+        Fdrag
 
-We have three main forces:
 
-    1. Gravity
-    2. Wind
-    3. Air resistance
+Newton's second law:
+
+        F = ma
+
+so:
+
+        a = F/m
+
 
 Gravity:
 
         Fgravity = m * g
 
 
-Wind:
+Drag:
 
-        Fwind = external wind force
+        Fdrag = -k * v
 
+The drag coefficient k is spatially varying.
 
-Air resistance:
-
-        Fdrag = -k(x) * v
-
-The negative sign is important.
-
-Air resistance always acts opposite to the direction of velocity.
-
-The coefficient k(x) is NOT constant.
-
-It depends on the ball's position.
-
-Therefore the force depends on:
-
-        position
-        velocity
-
-The total force is:
-
-        Ftotal =
-            Fgravity +
-            Fwind +
-            Fdrag
-
-
-Newton's second law:
-
-        F = m * a
-
-therefore:
-
-        a = F / m
-
-======================================================================
+============================================================
 */
 
 
-Vector3 CalculateAcceleration(
-    const Ball& ball,
-    const Box& box,
-    const PhysicsParameters& physics)
+Vector3 calculateForces(
+    Ball &ball,
+    Box &box,
+    Physics &physics)
 {
-    Vector3 gravityForce =
-        Multiply(
-            physics.gravity,
-            ball.mass
-        );
+    Vector3 force = {
+        0,
+        0,
+        0
+    };
 
 
-    float dragCoefficient =
-        CalculateSpatialDrag(
+    // --------------------------------------------------------
+    // GRAVITY
+    // --------------------------------------------------------
+
+    force.x +=
+        ball.mass *
+        physics.gravity.x;
+
+    force.y +=
+        ball.mass *
+        physics.gravity.y;
+
+    force.z +=
+        ball.mass *
+        physics.gravity.z;
+
+
+    // --------------------------------------------------------
+    // WIND
+    // --------------------------------------------------------
+
+    force.x +=
+        physics.wind.x;
+
+    force.y +=
+        physics.wind.y;
+
+    force.z +=
+        physics.wind.z;
+
+
+    // --------------------------------------------------------
+    // AIR RESISTANCE
+    // --------------------------------------------------------
+
+    float drag =
+        calculateDrag(
             ball.position,
             box,
             physics
         );
 
 
-    Vector3 dragForce =
-        Multiply(
-            ball.velocity,
-            -dragCoefficient
-        );
+    force.x +=
+        -drag *
+        ball.velocity.x;
+
+    force.y +=
+        -drag *
+        ball.velocity.y;
+
+    force.z +=
+        -drag *
+        ball.velocity.z;
 
 
-    Vector3 totalForce =
-        Add(
-            gravityForce,
-            physics.wind
-        );
-
-
-    totalForce =
-        Add(
-            totalForce,
-            dragForce
-        );
-
-
-    Vector3 acceleration =
-        Multiply(
-            totalForce,
-            1.0f / ball.mass
-        );
-
-
-    return acceleration;
+    return force;
 }
 
 
 /*
-======================================================================
-
-                    CODE YOURSELF
+============================================================
 
                   EULER INTEGRATION
 
-======================================================================
+============================================================
 
-This assignment specifically asks for basic Euler integration.
-
-Euler integration approximates the continuous equations of motion.
+Forward Euler integration is used.
 
 Position:
 
-        x(t + dt) = x(t) + v(t) * dt
+    x_new = x_old + v_old * dt
 
 
 Velocity:
 
-        v(t + dt) = v(t) + a(t) * dt
+    v_new = v_old + a * dt
 
 
-The important point is that dt is user adjustable.
+The timestep dt is supplied by the user.
 
-A smaller dt usually produces a more accurate numerical
-approximation.
-
-A larger dt is faster computationally but can introduce
-more numerical error.
-
-The physics timestep is independent from the rendering frame rate.
-
-======================================================================
+============================================================
 */
 
 
-void EulerIntegrate(
-    Ball& ball,
-    const Box& box,
-    const PhysicsParameters& physics,
+void eulerIntegration(
+    Ball &ball,
+    Box &box,
+    Physics &physics,
     float dt)
 {
-    if (dt <= 0.0f)
-        return;
-
-
-    Vector3 acceleration =
-        CalculateAcceleration(
+    Vector3 force =
+        calculateForces(
             ball,
             box,
             physics
         );
 
 
-    ball.position =
-        Add(
-            ball.position,
-            Multiply(
-                ball.velocity,
-                dt
-            )
-        );
+    Vector3 acceleration;
+
+    acceleration.x =
+        force.x /
+        ball.mass;
+
+    acceleration.y =
+        force.y /
+        ball.mass;
+
+    acceleration.z =
+        force.z /
+        ball.mass;
 
 
-    ball.velocity =
-        Add(
-            ball.velocity,
-            Multiply(
-                acceleration,
-                dt
-            )
-        );
+    // Position update
+
+    ball.position.x =
+        ball.position.x +
+        ball.velocity.x * dt;
+
+    ball.position.y =
+        ball.position.y +
+        ball.velocity.y * dt;
+
+    ball.position.z =
+        ball.position.z +
+        ball.velocity.z * dt;
+
+
+    // Velocity update
+
+    ball.velocity.x =
+        ball.velocity.x +
+        acceleration.x * dt;
+
+    ball.velocity.y =
+        ball.velocity.y +
+        acceleration.y * dt;
+
+    ball.velocity.z =
+        ball.velocity.z +
+        acceleration.z * dt;
 }
 
 
 /*
-======================================================================
+============================================================
 
-                CODE YOURSELF
+                COLLISION DETECTION
 
-        COLLISION DETECTION AND RESPONSE
+============================================================
 
-======================================================================
+The ball is a sphere.
 
-The ball is spherical.
+The center of the ball must always remain at least one
+radius away from every wall.
 
-Therefore collision with a wall is detected by comparing the
-CENTER of the ball with a boundary that has been moved inward
-by the radius.
+For example:
 
-For example, for the left wall:
+    left wall = -width / 2
 
-        x >= boxLeft + radius
+The center can only reach:
 
-For the right wall:
-
-        x <= boxRight - radius
+    -width / 2 + radius
 
 
-The same idea is applied to all six surfaces.
+Six surfaces are checked:
 
-We have:
+    left
+    right
+    bottom
+    top
+    front
+    back
 
-        left
-        right
+The collision time is calculated so that the ball can stop
+at the wall instead of moving through it.
 
-        bottom
-        top
-
-        front
-        back
-
-
-FRACTIONAL TIMESTEP
-
-Suppose a physics timestep is:
-
-        dt = 0.0083 seconds
-
-but the ball actually reaches a wall after:
-
-        t = 0.003 seconds
-
-We should NOT integrate the entire timestep first.
-
-Instead:
-
-        1. Integrate 0.003 seconds.
-        2. Resolve collision.
-        3. Integrate the remaining 0.0053 seconds.
-
-This prevents the ball from penetrating deeply through
-the wall.
-
-======================================================================
+============================================================
 */
 
 
-struct Collision
+struct CollisionInfo
 {
-    bool hit;
+    bool collision;
 
     float time;
 
@@ -1071,22 +1018,17 @@ struct Collision
 };
 
 
-// ====================================================================
-// COLLISION DETECTION
-// ====================================================================
-
-Collision FindCollision(
-    const Ball& ball,
-    const Box& box,
+CollisionInfo findCollision(
+    Ball &ball,
+    Box &box,
     float dt)
 {
-    Collision collision;
+    CollisionInfo result;
 
-    collision.hit = false;
+    result.collision = false;
+    result.time = dt;
 
-    collision.time = dt;
-
-    collision.normal = {
+    result.normal = {
         0,
         0,
         0
@@ -1094,63 +1036,52 @@ Collision FindCollision(
 
 
     float minX =
-        MinimumX(
-            box,
-            ball
-        );
+        -box.width / 2.0f +
+        ball.radius;
 
     float maxX =
-        MaximumX(
-            box,
-            ball
-        );
+        box.width / 2.0f -
+        ball.radius;
 
 
     float minY =
-        MinimumY(
-            box,
-            ball
-        );
+        -box.height / 2.0f +
+        ball.radius;
 
     float maxY =
-        MaximumY(
-            box,
-            ball
-        );
+        box.height / 2.0f -
+        ball.radius;
 
 
     float minZ =
-        MinimumZ(
-            box,
-            ball
-        );
+        -box.depth / 2.0f +
+        ball.radius;
 
     float maxZ =
-        MaximumZ(
-            box,
-            ball
-        );
+        box.depth / 2.0f -
+        ball.radius;
 
 
-    Vector3 predicted =
-        Add(
-            ball.position,
-            Multiply(
-                ball.velocity,
-                dt
-            )
-        );
+    Vector3 predicted;
+
+    predicted.x =
+        ball.position.x +
+        ball.velocity.x * dt;
+
+    predicted.y =
+        ball.position.y +
+        ball.velocity.y * dt;
+
+    predicted.z =
+        ball.position.z +
+        ball.velocity.z * dt;
 
 
-    const float epsilon =
-        0.000001f;
+    // --------------------------------------------------------
+    // LEFT
+    // --------------------------------------------------------
 
-
-    // ------------------------------------------------------------
-    // X AXIS
-    // ------------------------------------------------------------
-
-    if (ball.velocity.x < -epsilon &&
+    if (ball.velocity.x < 0 &&
         predicted.x < minX)
     {
         float t =
@@ -1158,14 +1089,13 @@ Collision FindCollision(
             ball.velocity.x;
 
 
-        if (t >= 0.0f &&
-            t <= collision.time)
+        if (t >= 0 &&
+            t <= result.time)
         {
-            collision.hit = true;
+            result.collision = true;
+            result.time = t;
 
-            collision.time = t;
-
-            collision.normal = {
+            result.normal = {
                 1,
                 0,
                 0
@@ -1174,7 +1104,11 @@ Collision FindCollision(
     }
 
 
-    if (ball.velocity.x > epsilon &&
+    // --------------------------------------------------------
+    // RIGHT
+    // --------------------------------------------------------
+
+    if (ball.velocity.x > 0 &&
         predicted.x > maxX)
     {
         float t =
@@ -1182,14 +1116,13 @@ Collision FindCollision(
             ball.velocity.x;
 
 
-        if (t >= 0.0f &&
-            t <= collision.time)
+        if (t >= 0 &&
+            t <= result.time)
         {
-            collision.hit = true;
+            result.collision = true;
+            result.time = t;
 
-            collision.time = t;
-
-            collision.normal = {
+            result.normal = {
                 -1,
                 0,
                 0
@@ -1198,11 +1131,11 @@ Collision FindCollision(
     }
 
 
-    // ------------------------------------------------------------
-    // Y AXIS
-    // ------------------------------------------------------------
+    // --------------------------------------------------------
+    // BOTTOM
+    // --------------------------------------------------------
 
-    if (ball.velocity.y < -epsilon &&
+    if (ball.velocity.y < 0 &&
         predicted.y < minY)
     {
         float t =
@@ -1210,14 +1143,13 @@ Collision FindCollision(
             ball.velocity.y;
 
 
-        if (t >= 0.0f &&
-            t <= collision.time)
+        if (t >= 0 &&
+            t <= result.time)
         {
-            collision.hit = true;
+            result.collision = true;
+            result.time = t;
 
-            collision.time = t;
-
-            collision.normal = {
+            result.normal = {
                 0,
                 1,
                 0
@@ -1226,7 +1158,11 @@ Collision FindCollision(
     }
 
 
-    if (ball.velocity.y > epsilon &&
+    // --------------------------------------------------------
+    // TOP
+    // --------------------------------------------------------
+
+    if (ball.velocity.y > 0 &&
         predicted.y > maxY)
     {
         float t =
@@ -1234,14 +1170,13 @@ Collision FindCollision(
             ball.velocity.y;
 
 
-        if (t >= 0.0f &&
-            t <= collision.time)
+        if (t >= 0 &&
+            t <= result.time)
         {
-            collision.hit = true;
+            result.collision = true;
+            result.time = t;
 
-            collision.time = t;
-
-            collision.normal = {
+            result.normal = {
                 0,
                 -1,
                 0
@@ -1250,11 +1185,11 @@ Collision FindCollision(
     }
 
 
-    // ------------------------------------------------------------
-    // Z AXIS
-    // ------------------------------------------------------------
+    // --------------------------------------------------------
+    // FRONT
+    // --------------------------------------------------------
 
-    if (ball.velocity.z < -epsilon &&
+    if (ball.velocity.z < 0 &&
         predicted.z < minZ)
     {
         float t =
@@ -1262,14 +1197,13 @@ Collision FindCollision(
             ball.velocity.z;
 
 
-        if (t >= 0.0f &&
-            t <= collision.time)
+        if (t >= 0 &&
+            t <= result.time)
         {
-            collision.hit = true;
+            result.collision = true;
+            result.time = t;
 
-            collision.time = t;
-
-            collision.normal = {
+            result.normal = {
                 0,
                 0,
                 1
@@ -1278,7 +1212,11 @@ Collision FindCollision(
     }
 
 
-    if (ball.velocity.z > epsilon &&
+    // --------------------------------------------------------
+    // BACK
+    // --------------------------------------------------------
+
+    if (ball.velocity.z > 0 &&
         predicted.z > maxZ)
     {
         float t =
@@ -1286,14 +1224,13 @@ Collision FindCollision(
             ball.velocity.z;
 
 
-        if (t >= 0.0f &&
-            t <= collision.time)
+        if (t >= 0 &&
+            t <= result.time)
         {
-            collision.hit = true;
+            result.collision = true;
+            result.time = t;
 
-            collision.time = t;
-
-            collision.normal = {
+            result.normal = {
                 0,
                 0,
                 -1
@@ -1302,542 +1239,920 @@ Collision FindCollision(
     }
 
 
-    return collision;
+    return result;
 }
 
 
-// ====================================================================
-// COLLISION RESPONSE
-// ====================================================================
+/*
+============================================================
 
-void ResolveCollision(
-    Ball& ball,
+                COLLISION RESPONSE
+
+============================================================
+
+The velocity is split into:
+
+    Normal component
+    Tangential component
+
+
+Restitution changes the normal component:
+
+    vn_new = -e * vn_old
+
+
+where e is the coefficient of restitution.
+
+Friction reduces the tangential velocity.
+
+============================================================
+*/
+
+
+void resolveCollision(
+    Ball &ball,
     Vector3 normal,
-    const PhysicsParameters& physics,
-    unsigned long long& collisionCount)
+    Physics &physics)
 {
-    /*
-        Decompose velocity into:
-
-            normal component
-            tangential component
-
-        The normal component determines how strongly the ball
-        bounces away from the surface.
-
-        The tangential component is affected by friction.
-    */
-
     float normalVelocity =
-        Dot(
-            ball.velocity,
-            normal
-        );
+        ball.velocity.x * normal.x +
+        ball.velocity.y * normal.y +
+        ball.velocity.z * normal.z;
 
 
-    /*
-        If the ball is already moving away from the wall,
-        there is nothing to bounce.
-    */
-
-    if (normalVelocity >= 0.0f)
+    if (normalVelocity >= 0)
         return;
 
 
-    Vector3 normalComponent =
-        Multiply(
-            normal,
-            normalVelocity
-        );
+    Vector3 normalPart;
+
+    normalPart.x =
+        normal.x *
+        normalVelocity;
+
+    normalPart.y =
+        normal.y *
+        normalVelocity;
+
+    normalPart.z =
+        normal.z *
+        normalVelocity;
 
 
-    Vector3 tangentialComponent =
-        Subtract(
-            ball.velocity,
-            normalComponent
-        );
+    Vector3 tangentPart;
+
+    tangentPart.x =
+        ball.velocity.x -
+        normalPart.x;
+
+    tangentPart.y =
+        ball.velocity.y -
+        normalPart.y;
+
+    tangentPart.z =
+        ball.velocity.z -
+        normalPart.z;
 
 
-    /*
-        Restitution reverses the normal component.
+    // Restitution
 
-            v_normal_new =
-                -e * v_normal_old
+    normalPart.x *=
+        -physics.restitution;
 
-        e = coefficient of restitution.
-    */
+    normalPart.y *=
+        -physics.restitution;
 
-    Vector3 newNormalComponent =
-        Multiply(
-            normalComponent,
-            -physics.restitution
-        );
+    normalPart.z *=
+        -physics.restitution;
 
 
-    /*
-        Friction reduces motion parallel to the surface.
-    */
+    // Friction
 
-    Vector3 newTangentialComponent =
-        Multiply(
-            tangentialComponent,
-            std::max(
-                0.0f,
-                1.0f - physics.friction
-            )
-        );
+    tangentPart.x *=
+        (1.0f - physics.friction);
+
+    tangentPart.y *=
+        (1.0f - physics.friction);
+
+    tangentPart.z *=
+        (1.0f - physics.friction);
 
 
-    ball.velocity =
-        Add(
-            newNormalComponent,
-            newTangentialComponent
-        );
+    ball.velocity.x =
+        normalPart.x +
+        tangentPart.x;
 
+    ball.velocity.y =
+        normalPart.y +
+        tangentPart.y;
 
-    collisionCount++;
+    ball.velocity.z =
+        normalPart.z +
+        tangentPart.z;
 }
 
 
 /*
-======================================================================
+============================================================
 
-              END OF CODE YOURSELF SECTION
+                 FRACTIONAL TIMESTEP
 
-        COLLISION DETECTION AND RESPONSE
+============================================================
 
-======================================================================
+Suppose:
+
+        dt = 0.01 seconds
+
+but the collision happens at:
+
+        t = 0.006 seconds
+
+
+We do NOT simply move the ball for the complete 0.01
+seconds.
+
+Instead:
+
+        1. Integrate for 0.006 seconds
+        2. Resolve the collision
+        3. Integrate for the remaining 0.004 seconds
+
+This is the fractional timestep approach required by
+the assignment.
+
+============================================================
 */
 
 
-// ====================================================================
-// CREATE SIMULATION
-// ====================================================================
-
-bool CreateSimulation(
-    Simulation& simulation,
-    Box& box)
+void updateSimulation(
+    Ball &ball,
+    Box &box,
+    Physics &physics)
 {
-    float radius;
-    float mass;
-
-    float px;
-    float py;
-    float pz;
-
-    float vx;
-    float vy;
-    float vz;
-
-    float width;
-    float height;
-    float depth;
-
-
-    if (!GetValue(0, radius) ||
-        !GetValue(1, mass) ||
-        !GetValue(2, px) ||
-        !GetValue(3, py) ||
-        !GetValue(4, pz) ||
-        !GetValue(5, vx) ||
-        !GetValue(6, vy) ||
-        !GetValue(7, vz) ||
-        !GetValue(8, width) ||
-        !GetValue(9, height) ||
-        !GetValue(10, depth))
-    {
-        errorMessage =
-            "ERROR: Please enter valid numerical values.";
-
-        return false;
-    }
-
-
-    box.width = width;
-
-    box.height = height;
-
-    box.depth = depth;
-
-    box.center = {
-        0,
-        0,
-        0
-    };
-
-
-    Vector3 position = {
-        px,
-        py,
-        pz
-    };
-
-
-    if (!ValidateInput(
-            radius,
-            mass,
-            position,
-            box))
-    {
-        return false;
-    }
-
-
-    simulation.ball.position =
-        position;
-
-
-    simulation.ball.velocity = {
-        vx,
-        vy,
-        vz
-    };
-
-
-    simulation.ball.radius =
-        radius;
-
-
-    simulation.ball.mass =
-        mass;
-
-
-    simulation.simulationTime =
-        0.0;
-
-
-    simulation.collisionCount =
-        0;
-
-
-    simulation.physicsDt =
-        1.0f / 120.0f;
-
-
-    simulation.paused =
-        false;
-
-
-    simulation.running =
-        true;
-
-
-    return true;
-}
-
-
-/*
-======================================================================
-
-                    CODE YOURSELF
-
-             SIMULATION LOOP / TIMESTEPPING
-
-======================================================================
-
-The rendering loop runs at approximately 60 FPS.
-
-The physics timestep is independent of this.
-
-For example:
-
-        rendering:
-            approximately 60 frames/sec
-
-        physics:
-            120 steps/sec
-
-The accumulator stores real elapsed time.
-
-If enough real time has passed to perform another physics step,
-we execute one physics step.
-
-This allows the user to change the physics timestep without
-changing the intended rendering speed.
-
-Within each physics timestep, collision detection may divide
-the timestep into smaller fractional pieces.
-
-======================================================================
-*/
-
-
-void UpdateSimulation(
-    Simulation& simulation,
-    const Box& box,
-    const PhysicsParameters& physics)
-{
-    float remaining =
-        simulation.physicsDt;
+    float remainingTime =
+        physics.timestep;
 
 
     int iterations = 0;
 
-    const int maximumIterations = 10;
-
 
     while (
-        remaining > 0.000001f &&
-        iterations < maximumIterations)
+        remainingTime > 0.000001f &&
+        iterations < 10)
     {
-        Collision collision =
-            FindCollision(
-                simulation.ball,
+        CollisionInfo collision =
+            findCollision(
+                ball,
                 box,
-                remaining
+                remainingTime
             );
 
 
-        if (!collision.hit)
+        if (!collision.collision)
         {
-            EulerIntegrate(
-                simulation.ball,
+            eulerIntegration(
+                ball,
                 box,
                 physics,
-                remaining
+                remainingTime
             );
 
-
-            simulation.simulationTime +=
-                remaining;
-
-
-            remaining = 0.0f;
+            remainingTime = 0;
 
             break;
         }
 
 
         float collisionTime =
-            std::max(
-                0.0f,
-                collision.time
-            );
+            collision.time;
 
 
         if (collisionTime > 0.000001f)
         {
-            EulerIntegrate(
-                simulation.ball,
+            eulerIntegration(
+                ball,
                 box,
                 physics,
                 collisionTime
             );
-
-
-            simulation.simulationTime +=
-                collisionTime;
         }
 
 
-        /*
-            Put the ball exactly on the collision surface.
-
-            This prevents numerical integration from leaving
-            the ball slightly inside the wall.
-        */
+        // Put ball exactly on collision surface
 
         if (collision.normal.x > 0.5f)
         {
-            simulation.ball.position.x =
-                MinimumX(
-                    box,
-                    simulation.ball
-                );
+            ball.position.x =
+                -box.width / 2.0f +
+                ball.radius;
         }
-        else if (collision.normal.x < -0.5f)
+
+
+        if (collision.normal.x < -0.5f)
         {
-            simulation.ball.position.x =
-                MaximumX(
-                    box,
-                    simulation.ball
-                );
+            ball.position.x =
+                box.width / 2.0f -
+                ball.radius;
         }
 
 
         if (collision.normal.y > 0.5f)
         {
-            simulation.ball.position.y =
-                MinimumY(
-                    box,
-                    simulation.ball
-                );
+            ball.position.y =
+                -box.height / 2.0f +
+                ball.radius;
         }
-        else if (collision.normal.y < -0.5f)
+
+
+        if (collision.normal.y < -0.5f)
         {
-            simulation.ball.position.y =
-                MaximumY(
-                    box,
-                    simulation.ball
-                );
+            ball.position.y =
+                box.height / 2.0f -
+                ball.radius;
         }
 
 
         if (collision.normal.z > 0.5f)
         {
-            simulation.ball.position.z =
-                MinimumZ(
-                    box,
-                    simulation.ball
-                );
+            ball.position.z =
+                -box.depth / 2.0f +
+                ball.radius;
         }
-        else if (collision.normal.z < -0.5f)
+
+
+        if (collision.normal.z < -0.5f)
         {
-            simulation.ball.position.z =
-                MaximumZ(
-                    box,
-                    simulation.ball
-                );
+            ball.position.z =
+                box.depth / 2.0f -
+                ball.radius;
         }
 
 
-        ResolveCollision(
-            simulation.ball,
+        // Collision response
+
+        resolveCollision(
+            ball,
             collision.normal,
-            physics,
-            simulation.collisionCount
+            physics
         );
 
 
-        remaining -=
+        remainingTime -=
             collisionTime;
 
 
-        /*
-            Tiny movement away from the wall.
+        // Small offset to prevent repeated collision
 
-            This prevents floating-point rounding from detecting
-            the same collision repeatedly at exactly t = 0.
-        */
+        ball.position.x +=
+            collision.normal.x *
+            0.00001f;
 
-        simulation.ball.position =
-            Add(
-                simulation.ball.position,
-                Multiply(
-                    collision.normal,
-                    0.00001f
-                )
-            );
+        ball.position.y +=
+            collision.normal.y *
+            0.00001f;
 
-
-        if (collisionTime <
-            0.000001f)
-        {
-            remaining -=
-                0.000001f;
-        }
+        ball.position.z +=
+            collision.normal.z *
+            0.00001f;
 
 
         iterations++;
+
+
+        if (collisionTime < 0.000001f)
+        {
+            remainingTime -=
+                0.000001f;
+        }
     }
 
 
-    /*
-        Final safety clamp.
+    // Final safety checks
 
-        Even with fractional timestep collision handling, numerical
-        rounding can produce a tiny error. This guarantees that
-        the ball remains inside the box.
-    */
+    float minX =
+        -box.width / 2.0f +
+        ball.radius;
 
-    simulation.ball.position.x =
-        std::max(
-            MinimumX(
-                box,
-                simulation.ball
-            ),
-            std::min(
-                MaximumX(
-                    box,
-                    simulation.ball
-                ),
-                simulation.ball.position.x
-            )
-        );
+    float maxX =
+        box.width / 2.0f -
+        ball.radius;
 
 
-    simulation.ball.position.y =
-        std::max(
-            MinimumY(
-                box,
-                simulation.ball
-            ),
-            std::min(
-                MaximumY(
-                    box,
-                    simulation.ball
-                ),
-                simulation.ball.position.y
-            )
-        );
+    float minY =
+        -box.height / 2.0f +
+        ball.radius;
+
+    float maxY =
+        box.height / 2.0f -
+        ball.radius;
 
 
-    simulation.ball.position.z =
-        std::max(
-            MinimumZ(
-                box,
-                simulation.ball
-            ),
-            std::min(
-                MaximumZ(
-                    box,
-                    simulation.ball
-                ),
-                simulation.ball.position.z
-            )
-        );
+    float minZ =
+        -box.depth / 2.0f +
+        ball.radius;
+
+    float maxZ =
+        box.depth / 2.0f -
+        ball.radius;
+
+
+    if (ball.position.x < minX)
+        ball.position.x = minX;
+
+    if (ball.position.x > maxX)
+        ball.position.x = maxX;
+
+
+    if (ball.position.y < minY)
+        ball.position.y = minY;
+
+    if (ball.position.y > maxY)
+        ball.position.y = maxY;
+
+
+    if (ball.position.z < minZ)
+        ball.position.z = minZ;
+
+    if (ball.position.z > maxZ)
+        ball.position.z = maxZ;
 }
 
 
-/*
-======================================================================
+// ------------------------------------------------------------
+// NUMBER FORMATTING
+// ------------------------------------------------------------
 
-            END OF CODE YOURSELF SECTION
-
-              SIMULATION LOOP / TIMESTEPPING
-
-======================================================================
-*/
-
-
-// ====================================================================
-// NUMBER FORMATTER
-// ====================================================================
-
-std::string Number(
-    float value,
-    int precision = 2)
+string formatNumber(
+    float number,
+    int decimals = 2)
 {
-    std::ostringstream stream;
+    stringstream stream;
 
-    stream
-        << std::fixed
-        << std::setprecision(
-            precision
-        )
-        << value;
-
+    stream << fixed
+           << setprecision(decimals)
+           << number;
 
     return stream.str();
 }
 
 
-// ====================================================================
-// DRAW BOX
-// ====================================================================
+// ------------------------------------------------------------
+// DRAW INPUT SCREEN
+// ------------------------------------------------------------
 
-void DrawBox(
-    const Box& box)
+void drawInputScreen(
+    int screenWidth,
+    int screenHeight)
+{
+    ClearBackground(RAYWHITE);
+
+
+    DrawText(
+        "PHYSICALLY BASED BALL SIMULATION",
+        30,
+        15,
+        27,
+        DARKBLUE
+    );
+
+
+    DrawText(
+        "USER INPUT / INITIAL CONDITIONS",
+        30,
+        48,
+        18,
+        BLACK
+    );
+
+
+    // --------------------------------------------------------
+    // LEFT COLUMN
+    // --------------------------------------------------------
+
+    DrawText(
+        "BALL",
+        70,
+        70,
+        17,
+        BLUE
+    );
+
+    DrawText(
+        "Radius",
+        130,
+        77,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Mass",
+        130,
+        112,
+        15,
+        DARKGRAY
+    );
+
+
+    DrawText(
+        "STARTING POSITION",
+        70,
+        140,
+        17,
+        BLUE
+    );
+
+    DrawText(
+        "X",
+        130,
+        167,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Y",
+        130,
+        202,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Z",
+        130,
+        237,
+        15,
+        DARKGRAY
+    );
+
+
+    DrawText(
+        "STARTING VELOCITY",
+        70,
+        265,
+        17,
+        BLUE
+    );
+
+    DrawText(
+        "X",
+        130,
+        292,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Y",
+        130,
+        327,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Z",
+        130,
+        362,
+        15,
+        DARKGRAY
+    );
+
+
+    DrawText(
+        "BOX DIMENSIONS",
+        70,
+        390,
+        17,
+        BLUE
+    );
+
+    DrawText(
+        "Width",
+        130,
+        417,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Height",
+        130,
+        452,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Depth",
+        130,
+        487,
+        15,
+        DARKGRAY
+    );
+
+
+    DrawText(
+        "WIND",
+        70,
+        515,
+        17,
+        BLUE
+    );
+
+    DrawText(
+        "X",
+        130,
+        542,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Y",
+        130,
+        577,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Z",
+        130,
+        612,
+        15,
+        DARKGRAY
+    );
+
+
+    // --------------------------------------------------------
+    // RIGHT COLUMN
+    // --------------------------------------------------------
+
+    DrawText(
+        "COLLISION / PHYSICS",
+        650,
+        60,
+        20,
+        BLACK
+    );
+
+
+    DrawText(
+        "Restitution",
+        680,
+        87,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Friction",
+        680,
+        122,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Timestep (dt)",
+        680,
+        157,
+        15,
+        DARKGRAY
+    );
+
+
+    DrawText(
+        "SPATIAL AIR RESISTANCE",
+        650,
+        195,
+        20,
+        DARKBLUE
+    );
+
+
+    DrawText(
+        "Base Drag",
+        680,
+        217,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Centre Drag",
+        680,
+        252,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "Drag Falloff",
+        680,
+        287,
+        15,
+        DARKGRAY
+    );
+
+
+    DrawText(
+        "FIXED ENVIRONMENT",
+        650,
+        325,
+        20,
+        DARKBLUE
+    );
+
+
+    DrawText(
+        "Gravity",
+        680,
+        357,
+        15,
+        DARKGRAY
+    );
+
+
+    DrawText(
+        "Gravity is fixed at -9.81 m/s^2",
+        680,
+        395,
+        15,
+        DARKGREEN
+    );
+
+
+    DrawText(
+        "Air resistance is weakest near the faces",
+        680,
+        425,
+        15,
+        DARKGREEN
+    );
+
+
+    DrawText(
+        "and strongest around the centre.",
+        680,
+        450,
+        15,
+        DARKGREEN
+    );
+
+
+    DrawText(
+        "CONTROLS",
+        650,
+        495,
+        20,
+        DARKBLUE
+    );
+
+
+    DrawText(
+        "Click field to edit",
+        680,
+        525,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "TAB / UP / DOWN = change field",
+        680,
+        550,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "BACKSPACE = delete",
+        680,
+        575,
+        15,
+        DARKGRAY
+    );
+
+    DrawText(
+        "ENTER = start simulation",
+        680,
+        600,
+        15,
+        DARKGREEN
+    );
+
+
+    // --------------------------------------------------------
+    // INPUT BOXES
+    // --------------------------------------------------------
+
+    for (int i = 0; i < NUMBER_OF_FIELDS; i++)
+    {
+        Color borderColor =
+            GRAY;
+
+
+        if (inputFields[i].selected)
+        {
+            borderColor =
+                DARKBLUE;
+        }
+
+
+        /*
+            Gravity is displayed but not editable.
+        */
+
+        if (i == 20)
+        {
+            borderColor =
+                LIGHTGRAY;
+        }
+
+
+        DrawRectangleLinesEx(
+            inputFields[i].rectangle,
+            2,
+            borderColor
+        );
+
+
+        DrawText(
+            inputFields[i].value.c_str(),
+            inputFields[i].rectangle.x + 8,
+            inputFields[i].rectangle.y + 6,
+            15,
+            i == 20 ? DARKGRAY : BLACK
+        );
+    }
+
+
+    if (!errorMessage.empty())
+    {
+        DrawRectangle(
+            30,
+            650,
+            1170,
+            45,
+            Fade(RED, 0.12f)
+        );
+
+
+        DrawText(
+            errorMessage.c_str(),
+            50,
+            665,
+            15,
+            RED
+        );
+    }
+}
+
+
+// ------------------------------------------------------------
+// INPUT HANDLING
+// ------------------------------------------------------------
+
+void handleInput()
+{
+    if (IsMouseButtonPressed(
+            MOUSE_BUTTON_LEFT))
+    {
+        Vector2 mouse =
+            GetMousePosition();
+
+
+        for (int i = 0;
+             i < NUMBER_OF_FIELDS;
+             i++)
+        {
+            /*
+                Gravity is not editable.
+            */
+
+            if (i == 20)
+                continue;
+
+
+            if (CheckCollisionPointRec(
+                    mouse,
+                    inputFields[i].rectangle))
+            {
+                for (int j = 0;
+                     j < NUMBER_OF_FIELDS;
+                     j++)
+                {
+                    inputFields[j].selected =
+                        false;
+                }
+
+
+                inputFields[i].selected =
+                    true;
+
+                selectedField =
+                    i;
+
+                errorMessage =
+                    "";
+
+                break;
+            }
+        }
+    }
+
+
+    if (IsKeyPressed(KEY_TAB) ||
+        IsKeyPressed(KEY_DOWN))
+    {
+        inputFields[selectedField].selected =
+            false;
+
+
+        selectedField++;
+
+
+        if (selectedField >= 20)
+            selectedField = 0;
+
+
+        inputFields[selectedField].selected =
+            true;
+    }
+
+
+    if (IsKeyPressed(KEY_UP))
+    {
+        inputFields[selectedField].selected =
+            false;
+
+
+        selectedField--;
+
+
+        if (selectedField < 0)
+            selectedField = 19;
+
+
+        inputFields[selectedField].selected =
+            true;
+    }
+
+
+    int character =
+        GetCharPressed();
+
+
+    while (character > 0)
+    {
+        if ((character >= '0' &&
+             character <= '9') ||
+            character == '-' ||
+            character == '.')
+        {
+            inputFields[selectedField]
+                .value +=
+                (char)character;
+
+            errorMessage = "";
+        }
+
+
+        character =
+            GetCharPressed();
+    }
+
+
+    if (IsKeyPressed(KEY_BACKSPACE))
+    {
+        if (!inputFields[selectedField]
+                 .value.empty())
+        {
+            inputFields[selectedField]
+                .value
+                .pop_back();
+        }
+
+
+        errorMessage = "";
+    }
+}
+
+
+// ------------------------------------------------------------
+// DRAW BOX
+// ------------------------------------------------------------
+
+void drawBox(Box &box)
 {
     /*
-        Only wireframe is drawn.
+        Wireframe allows the ball to remain visible.
 
-        This is intentional.
-
-        A solid box would hide the ball from certain camera angles.
-
-        The wireframe makes it obvious that the ball remains inside
-        all six boundaries.
+        The six sides still exist for simulation purposes.
+        We are only choosing not to fill the cube visually.
     */
 
     DrawCubeWires(
@@ -1850,22 +2165,12 @@ void DrawBox(
 }
 
 
-// ====================================================================
+// ------------------------------------------------------------
 // DRAW BALL
-// ====================================================================
+// ------------------------------------------------------------
 
-void DrawBall(
-    const Ball& ball)
+void drawBall(Ball &ball)
 {
-    /*
-        The ball is rendered as a solid red sphere.
-
-        There is NO red velocity dot.
-
-        The velocity dot from the previous version was removed
-        because it could be confused with the actual simulated ball.
-    */
-
     DrawSphere(
         ball.position,
         ball.radius,
@@ -1883,712 +2188,224 @@ void DrawBall(
 }
 
 
-// ====================================================================
-// DRAW SPATIAL DRAG INDICATOR
-// ====================================================================
-
-void DrawDragIndicator(
-    const Box& box)
-{
-    /*
-        This is NOT a physical object.
-
-        It only indicates where the drag field is strongest.
-
-        We keep it extremely small so it cannot hide the ball.
-    */
-
-    DrawSphere(
-        box.center,
-        0.08f,
-        ORANGE
-    );
-}
-
-
-// ====================================================================
-// INPUT SCREEN
-// ====================================================================
-
-void DrawInputScreen(
-    int screenWidth,
-    int screenHeight)
-{
-    ClearBackground(
-        RAYWHITE
-    );
-
-
-    DrawText(
-        "PHYSICALLY BASED BALL SIMULATION",
-        30,
-        20,
-        27,
-        BLACK
-    );
-
-
-    DrawText(
-        "INITIAL CONDITIONS",
-        30,
-        55,
-        20,
-        DARKBLUE
-    );
-
-
-    DrawText(
-        "BALL",
-        60,
-        85,
-        16,
-        BLUE
-    );
-
-
-    DrawText(
-        "Radius",
-        100,
-        118,
-        16,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "Mass",
-        100,
-        163,
-        16,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "POSITION",
-        60,
-        198,
-        16,
-        BLUE
-    );
-
-
-    DrawText(
-        "X",
-        100,
-        233,
-        16,
-        DARKGRAY
-    );
-
-    DrawText(
-        "Y",
-        100,
-        278,
-        16,
-        DARKGRAY
-    );
-
-    DrawText(
-        "Z",
-        100,
-        323,
-        16,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "VELOCITY",
-        60,
-        358,
-        16,
-        BLUE
-    );
-
-
-    DrawText(
-        "X",
-        100,
-        393,
-        16,
-        DARKGRAY
-    );
-
-    DrawText(
-        "Y",
-        100,
-        438,
-        16,
-        DARKGRAY
-    );
-
-    DrawText(
-        "Z",
-        100,
-        483,
-        16,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "BOX DIMENSIONS",
-        60,
-        518,
-        16,
-        BLUE
-    );
-
-
-    DrawText(
-        "Width",
-        100,
-        553,
-        16,
-        DARKGRAY
-    );
-
-    DrawText(
-        "Height",
-        100,
-        598,
-        16,
-        DARKGRAY
-    );
-
-    DrawText(
-        "Depth",
-        100,
-        643,
-        16,
-        DARKGRAY
-    );
-
-
-    for (int i = 0; i < 11; i++)
-    {
-        Color border =
-            fields[i].active
-                ? DARKBLUE
-                : GRAY;
-
-
-        DrawRectangleLinesEx(
-            fields[i].rectangle,
-            2,
-            border
-        );
-
-
-        DrawText(
-            fields[i].value.c_str(),
-            static_cast<int>(
-                fields[i].rectangle.x + 8
-            ),
-            static_cast<int>(
-                fields[i].rectangle.y + 7
-            ),
-            17,
-            BLACK
-        );
-    }
-
-
-    DrawText(
-        "ENVIRONMENT",
-        700,
-        100,
-        20,
-        DARKBLUE
-    );
-
-
-    DrawText(
-        "Gravity",
-        700,
-        140,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "(0, -9.81, 0) m/s^2",
-        830,
-        140,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "Wind",
-        700,
-        180,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "(0.35, 0, -0.25) N",
-        830,
-        180,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "Spatial drag",
-        700,
-        220,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "HIGH near center",
-        830,
-        220,
-        17,
-        DARKGREEN
-    );
-
-
-    DrawText(
-        "LOW near faces",
-        830,
-        250,
-        17,
-        DARKGREEN
-    );
-
-
-    DrawText(
-        "Restitution",
-        700,
-        290,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "0.88",
-        830,
-        290,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "Friction",
-        700,
-        325,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "0.03",
-        830,
-        325,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "CONTROLS",
-        700,
-        390,
-        20,
-        DARKBLUE
-    );
-
-
-    DrawText(
-        "TAB / UP / DOWN",
-        700,
-        430,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "Select field",
-        900,
-        430,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "ENTER",
-        700,
-        465,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "Start simulation",
-        900,
-        465,
-        17,
-        DARKGREEN
-    );
-
-
-    DrawText(
-        "All values use SI units.",
-        700,
-        525,
-        17,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        "Ball must fit completely inside box.",
-        700,
-        555,
-        17,
-        DARKGRAY
-    );
-
-
-    if (!errorMessage.empty())
-    {
-        DrawText(
-            errorMessage.c_str(),
-            700,
-            610,
-            17,
-            RED
-        );
-    }
-
-
-    DrawText(
-        "ESC = Exit",
-        700,
-        650,
-        17,
-        DARKGRAY
-    );
-}
-
-
-// ====================================================================
-// HANDLE INPUT
-// ====================================================================
-
-void HandleInput()
-{
-    if (IsMouseButtonPressed(
-            MOUSE_BUTTON_LEFT))
-    {
-        Vector2 mouse =
-            GetMousePosition();
-
-
-        for (int i = 0; i < 11; i++)
-        {
-            if (CheckCollisionPointRec(
-                    mouse,
-                    fields[i].rectangle))
-            {
-                for (int j = 0; j < 11; j++)
-                    fields[j].active = false;
-
-
-                activeField =
-                    i;
-
-
-                fields[i].active =
-                    true;
-
-
-                errorMessage.clear();
-
-                break;
-            }
-        }
-    }
-
-
-    if (IsKeyPressed(KEY_TAB) ||
-        IsKeyPressed(KEY_DOWN))
-    {
-        fields[activeField].active =
-            false;
-
-
-        activeField++;
-
-
-        if (activeField >= 11)
-            activeField = 0;
-
-
-        fields[activeField].active =
-            true;
-    }
-
-
-    if (IsKeyPressed(KEY_UP))
-    {
-        fields[activeField].active =
-            false;
-
-
-        activeField--;
-
-
-        if (activeField < 0)
-            activeField = 10;
-
-
-        fields[activeField].active =
-            true;
-    }
-
-
-    int character =
-        GetCharPressed();
-
-
-    while (character > 0)
-    {
-        if ((character >= '0' &&
-             character <= '9') ||
-            character == '-' ||
-            character == '.')
-        {
-            fields[activeField].value +=
-                static_cast<char>(
-                    character
-                );
-
-
-            errorMessage.clear();
-        }
-
-
-        character =
-            GetCharPressed();
-    }
-
-
-    if (IsKeyPressed(
-            KEY_BACKSPACE))
-    {
-        if (!fields[activeField]
-                 .value.empty())
-        {
-            fields[activeField]
-                .value
-                .pop_back();
-        }
-
-
-        errorMessage.clear();
-    }
-}
-
-
-// ====================================================================
-// SIMULATION UI
-// ====================================================================
-
-void DrawSimulationUI(
-    const Simulation& simulation,
-    const PhysicsParameters& physics,
-    const Box& box,
+// ------------------------------------------------------------
+// DRAW SIMULATION INFORMATION
+// ------------------------------------------------------------
+
+void drawSimulationInfo(
+    Ball &ball,
+    Box &box,
+    Physics &physics,
+    double simulationTime,
+    unsigned long long collisions,
     int screenWidth,
     int screenHeight)
 {
     DrawRectangle(
-        5,
-        5,
-        345,
-        350,
-        Fade(
-            RAYWHITE,
-            0.90f
-        )
+        10,
+        10,
+        380,
+        330,
+        Fade(RAYWHITE, 0.90f)
     );
 
 
     DrawText(
         "PHYSICS SIMULATION",
-        15,
-        15,
         20,
-        BLACK
+        20,
+        21,
+        DARKBLUE
     );
 
 
     DrawText(
-        "SPACE : Pause / Resume",
+        "SPACE = pause/resume",
+        20,
+        55,
         15,
-        48,
-        16,
         DARKGRAY
     );
 
 
     DrawText(
-        "R : Initial Conditions",
+        "R = reset / change parameters",
+        20,
+        80,
         15,
-        72,
-        16,
         DARKGRAY
     );
 
 
-    DrawText(
-        "UP/DOWN : Physics timestep",
-        15,
-        96,
-        16,
-        DARKGRAY
-    );
+    string dtText =
+        "Physics timestep: " +
+        formatNumber(
+            physics.timestep,
+            6
+        );
 
 
     DrawText(
-        ("Physics dt: " +
-         Number(
-             simulation.physicsDt,
-             6
-         ) +
-         " s").c_str(),
-        15,
-        130,
+        dtText.c_str(),
+        20,
+        115,
         16,
         BLUE
     );
 
 
+    string timeText =
+        "Simulation time: " +
+        formatNumber(
+            (float)simulationTime,
+            2
+        ) +
+        " s";
+
+
     DrawText(
-        ("Simulation time: " +
-         Number(
-             static_cast<float>(
-                 simulation.simulationTime
-             ),
-             2
-         ) +
-         " s").c_str(),
-        15,
-        155,
+        timeText.c_str(),
+        20,
+        140,
         16,
         BLUE
     );
 
 
     float speed =
-        Length(
-            simulation.ball.velocity
+        sqrt(
+            ball.velocity.x *
+            ball.velocity.x +
+
+            ball.velocity.y *
+            ball.velocity.y +
+
+            ball.velocity.z *
+            ball.velocity.z
         );
 
 
+    string speedText =
+        "Speed: " +
+        formatNumber(
+            speed,
+            2
+        ) +
+        " m/s";
+
+
     DrawText(
-        ("Speed: " +
-         Number(
-             speed,
-             2
-         ) +
-         " m/s").c_str(),
-        15,
-        180,
+        speedText.c_str(),
+        20,
+        165,
         16,
         BLUE
     );
 
 
+    string collisionText =
+        "Collisions: " +
+        to_string(collisions);
+
+
     DrawText(
-        ("Collisions: " +
-         std::to_string(
-             simulation.collisionCount
-         )).c_str(),
-        15,
-        205,
+        collisionText.c_str(),
+        20,
+        190,
         16,
         BLUE
     );
 
 
-    float localDrag =
-        CalculateSpatialDrag(
-            simulation.ball.position,
+    float currentDrag =
+        calculateDrag(
+            ball.position,
             box,
             physics
         );
 
 
-    DrawText(
-        ("Local air resistance: " +
-         Number(
-             localDrag,
-             4
-         )).c_str(),
-        15,
-        230,
-        16,
-        DARKGREEN
-    );
+    string dragText =
+        "Current spatial drag: " +
+        formatNumber(
+            currentDrag,
+            5
+        );
 
 
     DrawText(
-        "HIGH center -> LOW faces",
-        15,
-        255,
+        dragText.c_str(),
+        20,
+        215,
         15,
         DARKGREEN
     );
 
 
-    DrawText(
-        ("Radius: " +
-         Number(
-             simulation.ball.radius
-         )).c_str(),
-        15,
-        285,
-        16,
-        DARKBLUE
-    );
+    string windText =
+        "Wind: (" +
+        formatNumber(physics.wind.x) +
+        ", " +
+        formatNumber(physics.wind.y) +
+        ", " +
+        formatNumber(physics.wind.z) +
+        ")";
 
 
     DrawText(
-        ("Mass: " +
-         Number(
-             simulation.ball.mass
-         )).c_str(),
+        windText.c_str(),
+        20,
+        240,
         15,
-        310,
-        16,
-        DARKBLUE
+        DARKGRAY
     );
 
 
-    if (simulation.paused)
+    string positionText =
+        "Position: (" +
+        formatNumber(ball.position.x) +
+        ", " +
+        formatNumber(ball.position.y) +
+        ", " +
+        formatNumber(ball.position.z) +
+        ")";
+
+
+    DrawText(
+        positionText.c_str(),
+        20,
+        270,
+        14,
+        DARKGRAY
+    );
+
+
+    string velocityText =
+        "Velocity: (" +
+        formatNumber(ball.velocity.x) +
+        ", " +
+        formatNumber(ball.velocity.y) +
+        ", " +
+        formatNumber(ball.velocity.z) +
+        ")";
+
+
+    DrawText(
+        velocityText.c_str(),
+        20,
+        295,
+        14,
+        DARKGRAY
+    );
+
+
+    if (paused)
     {
         DrawText(
             "PAUSED",
-            15,
-            335,
-            18,
+            screenWidth - 120,
+            20,
+            20,
             ORANGE
         );
     }
@@ -2596,72 +2413,32 @@ void DrawSimulationUI(
     {
         DrawText(
             "RUNNING",
-            15,
-            335,
-            18,
+            screenWidth - 130,
+            20,
+            20,
             GREEN
         );
     }
 
 
+    string fps =
+        "FPS: " +
+        to_string(GetFPS());
+
+
     DrawText(
-        ("FPS: " +
-         std::to_string(
-             GetFPS()
-         )).c_str(),
+        fps.c_str(),
         screenWidth - 90,
-        15,
-        17,
-        GREEN
-    );
-
-
-    DrawText(
-        ("Position: (" +
-         Number(
-             simulation.ball.position.x
-         ) +
-         ", " +
-         Number(
-             simulation.ball.position.y
-         ) +
-         ", " +
-         Number(
-             simulation.ball.position.z
-         ) +
-         ")").c_str(),
-        15,
-        screenHeight - 50,
-        16,
-        DARKGRAY
-    );
-
-
-    DrawText(
-        ("Velocity: (" +
-         Number(
-             simulation.ball.velocity.x
-         ) +
-         ", " +
-         Number(
-             simulation.ball.velocity.y
-         ) +
-         ", " +
-         Number(
-             simulation.ball.velocity.z
-         ) +
-         ")").c_str(),
-        15,
-        screenHeight - 25,
+        screenHeight - 30,
         16,
         DARKGRAY
     );
 }
 
 
-// ====================================================================
+// ------------------------------------------------------------
 // MAIN
-// ====================================================================
+// ------------------------------------------------------------
 
 int main()
 {
@@ -2682,16 +2459,40 @@ int main()
     SetTargetFPS(60);
 
 
-    InitializeFields();
+    setupInputFields();
+
+
+    Ball ball;
+
+    ball.position = {
+        0,
+        0,
+        0
+    };
+
+    ball.velocity = {
+        0,
+        0,
+        0
+    };
+
+    ball.radius =
+        0.45f;
+
+    ball.mass =
+        1.0f;
 
 
     Box box;
 
-    box.width = 12.0f;
+    box.width =
+        12.0f;
 
-    box.height = 10.0f;
+    box.height =
+        10.0f;
 
-    box.depth = 12.0f;
+    box.depth =
+        12.0f;
 
     box.center = {
         0,
@@ -2700,27 +2501,43 @@ int main()
     };
 
 
-    PhysicsParameters physics;
+    Physics physics;
 
-    CreatePhysics(
-        physics
-    );
+    physics.gravity = {
+        0,
+        -9.81f,
+        0
+    };
 
 
-    Simulation simulation;
+    physics.wind = {
+        0.35f,
+        0,
+        -0.25f
+    };
 
-    simulation.running =
-        false;
 
-    simulation.paused =
-        false;
+    physics.baseDrag =
+        0.002f;
 
-    simulation.physicsDt =
-        1.0f / 120.0f;
+    physics.centreDrag =
+        0.018f;
+
+    physics.dragFalloff =
+        2.0f;
+
+
+    physics.restitution =
+        0.88f;
+
+    physics.friction =
+        0.03f;
+
+    physics.timestep =
+        0.008333f;
 
 
     Camera3D camera = {};
-
 
     camera.position = {
         17.0f,
@@ -2728,13 +2545,11 @@ int main()
         17.0f
     };
 
-
     camera.target = {
         0,
         0,
         0
     };
-
 
     camera.up = {
         0,
@@ -2742,10 +2557,8 @@ int main()
         0
     };
 
-
     camera.fovy =
         45.0f;
-
 
     camera.projection =
         CAMERA_PERSPECTIVE;
@@ -2754,30 +2567,46 @@ int main()
     double accumulator =
         0.0;
 
+    double simulationTime =
+        0.0;
+
+
+    unsigned long long collisionCount =
+        0;
+
 
     while (!WindowShouldClose())
     {
-        // ========================================================
-        // INITIAL CONDITION SCREEN
-        // ========================================================
+        // =====================================================
+        // INPUT SCREEN
+        // =====================================================
 
-        if (!simulation.running)
+        if (!simulationStarted)
         {
-            HandleInput();
+            handleInput();
 
 
             if (IsKeyPressed(KEY_ENTER))
             {
-                if (CreateSimulation(
-                        simulation,
-                        box))
+                if (createSimulation(
+                        ball,
+                        box,
+                        physics))
                 {
+                    simulationStarted =
+                        true;
+
+                    paused =
+                        false;
+
                     accumulator =
                         0.0;
 
-                    CreatePhysics(
-                        physics
-                    );
+                    simulationTime =
+                        0.0;
+
+                    collisionCount =
+                        0;
                 }
             }
 
@@ -2785,7 +2614,7 @@ int main()
             BeginDrawing();
 
 
-            DrawInputScreen(
+            drawInputScreen(
                 screenWidth,
                 screenHeight
             );
@@ -2798,89 +2627,55 @@ int main()
         }
 
 
-        // ========================================================
+        // =====================================================
         // SIMULATION CONTROLS
-        // ========================================================
+        // =====================================================
 
         if (IsKeyPressed(KEY_SPACE))
         {
-            simulation.paused =
-                !simulation.paused;
+            paused =
+                !paused;
         }
 
 
         if (IsKeyPressed(KEY_R))
         {
-            simulation.running =
+            simulationStarted =
                 false;
 
-            simulation.paused =
+            paused =
                 false;
 
             accumulator =
                 0.0;
 
-            InitializeFields();
+            simulationTime =
+                0.0;
+
+            collisionCount =
+                0;
+
+            setupInputFields();
 
             continue;
         }
 
 
-        // ========================================================
-        // PHYSICS TIMESTEP CONTROL
-        // ========================================================
-
-        if (IsKeyPressed(KEY_UP))
-        {
-            simulation.physicsDt *=
-                0.5f;
-
-
-            simulation.physicsDt =
-                std::max(
-                    simulation.physicsDt,
-                    1.0f / 1000.0f
-                );
-        }
-
-
-        if (IsKeyPressed(KEY_DOWN))
-        {
-            simulation.physicsDt *=
-                2.0f;
-
-
-            simulation.physicsDt =
-                std::min(
-                    simulation.physicsDt,
-                    1.0f / 15.0f
-                );
-        }
-
-
-        // ========================================================
-        // FRAME TIME
-        // ========================================================
+        // =====================================================
+        // REAL FRAME TIME
+        // =====================================================
 
         float frameTime =
             GetFrameTime();
 
 
-        /*
-            Prevent an unusually long frame from producing
-            an enormous physics update.
-        */
-
-        frameTime =
-            std::min(
-                frameTime,
-                0.10f
-            );
+        if (frameTime > 0.1f)
+            frameTime = 0.1f;
 
 
-        // ========================================================
+        // =====================================================
         // CAMERA
-        // ========================================================
+        // =====================================================
 
         UpdateCamera(
             &camera,
@@ -2888,50 +2683,82 @@ int main()
         );
 
 
-        // ========================================================
-        // SIMULATION
-        // ========================================================
+        // =====================================================
+        // PHYSICS SIMULATION LOOP
+        // =====================================================
 
-        if (!simulation.paused)
+        if (!paused)
         {
             accumulator +=
                 frameTime;
 
 
-            /*
-                Physics updates happen according to physicsDt.
-
-                Rendering continues independently at the target
-                frame rate.
-            */
-
-            accumulator =
-                std::min(
-                    accumulator,
-                    0.25
-                );
+            int physicsSteps =
+                0;
 
 
             while (
                 accumulator >=
-                simulation.physicsDt)
+                physics.timestep &&
+                physicsSteps < 20)
             {
-                UpdateSimulation(
-                    simulation,
+                Vector3 oldVelocity =
+                    ball.velocity;
+
+
+                updateSimulation(
+                    ball,
                     box,
                     physics
                 );
 
 
+                /*
+                    Simple collision counter.
+
+                    This is only display information and does
+                    not affect the physics.
+                */
+
+                float velocityChange =
+                    fabs(
+                        ball.velocity.x -
+                        oldVelocity.x
+                    ) +
+
+                    fabs(
+                        ball.velocity.y -
+                        oldVelocity.y
+                    ) +
+
+                    fabs(
+                        ball.velocity.z -
+                        oldVelocity.z
+                    );
+
+
+                if (velocityChange > 0.1f)
+                {
+                    collisionCount++;
+                }
+
+
+                simulationTime +=
+                    physics.timestep;
+
+
                 accumulator -=
-                    simulation.physicsDt;
+                    physics.timestep;
+
+
+                physicsSteps++;
             }
         }
 
 
-        // ========================================================
+        // =====================================================
         // DRAW
-        // ========================================================
+        // =====================================================
 
         BeginDrawing();
 
@@ -2946,18 +2773,12 @@ int main()
         );
 
 
-        DrawBox(
+        drawBox(
             box
         );
 
 
-        /*
-            Coordinate axes.
-
-            X = red
-            Y = green
-            Z = blue
-        */
+        // Coordinate axes
 
         DrawLine3D(
             {-8, 0, 0},
@@ -2965,13 +2786,11 @@ int main()
             RED
         );
 
-
         DrawLine3D(
             {0, -8, 0},
             {0, 8, 0},
             GREEN
         );
-
 
         DrawLine3D(
             {0, 0, -8},
@@ -2980,32 +2799,20 @@ int main()
         );
 
 
-        /*
-            Small orange point marks the region where the
-            spatial air resistance is strongest.
-
-            It is only a visual reference.
-
-            It has NO physical effect on the ball.
-        */
-
-        DrawDragIndicator(
-            box
-        );
-
-
-        DrawBall(
-            simulation.ball
+        drawBall(
+            ball
         );
 
 
         EndMode3D();
 
 
-        DrawSimulationUI(
-            simulation,
-            physics,
+        drawSimulationInfo(
+            ball,
             box,
+            physics,
+            simulationTime,
+            collisionCount,
             screenWidth,
             screenHeight
         );
@@ -3020,195 +2827,3 @@ int main()
 
     return 0;
 }
-
-
-/*
-======================================================================
-
-                        END OF PROGRAM
-
-======================================================================
-
-WHAT HAS BEEN IMPLEMENTED
-
-    PHYSICS:
-
-        Gravity
-        Wind
-        Spatially varying air resistance
-        Euler integration
-        Adjustable physics timestep
-        Fractional collision timestep
-        Six-sided collision detection
-        Collision response
-        Restitution
-        Friction
-
-
-    USER INPUT:
-
-        Ball radius
-        Ball mass
-        Starting position
-        Starting velocity
-        Box width
-        Box height
-        Box depth
-
-
-    VISUALIZATION:
-
-        3D ball
-        Six-sided wireframe box
-        Camera rotation
-        Physics information
-        Current drag coefficient
-        Position
-        Velocity
-        Collision count
-        Simulation time
-        FPS
-
-
-    NOVELTY:
-
-        Spatial air resistance.
-
-        The drag coefficient changes according to the ball's
-        location inside the box.
-
-        The central region has stronger resistance.
-
-        Near the walls, resistance becomes weaker.
-
-        The ball therefore experiences a changing environment
-        as it moves through the box.
-
-
-======================================================================
-
-IMPORTANT PHYSICS EQUATIONS
-
-GRAVITY:
-
-        F = m * g
-
-
-AIR RESISTANCE:
-
-        F_drag = -k(x) * v
-
-
-TOTAL FORCE:
-
-        F_total =
-            F_gravity +
-            F_wind +
-            F_drag
-
-
-NEWTON'S SECOND LAW:
-
-        a = F_total / m
-
-
-EULER POSITION:
-
-        x_new = x_old + v * dt
-
-
-EULER VELOCITY:
-
-        v_new = v_old + a * dt
-
-
-NORMAL COLLISION RESPONSE:
-
-        v_normal_new =
-            -restitution * v_normal_old
-
-
-FRICTION:
-
-        v_tangent_new =
-            (1 - friction) * v_tangent_old
-
-
-======================================================================
-
-WHY THE BALL SHOULD NOT COME TO REST IMMEDIATELY
-
-The spatial drag parameters were intentionally reduced.
-
-Previous:
-
-        centerStrength = 0.30
-
-New:
-
-        centerStrength = 0.018
-
-The previous value was extremely strong relative to the
-velocity scale being used.
-
-The new field still produces a measurable difference in
-air resistance but does not dominate gravity and collisions.
-
-
-======================================================================
-
-WHY THE BALL CAN HIT ALL SIX SURFACES
-
-The default initial conditions are approximately:
-
-        position:
-
-            (-3.0, 1.5, -3.0)
-
-        velocity:
-
-            (6.0, 7.0, 6.5)
-
-
-Therefore it initially moves:
-
-        +X
-        +Y
-        +Z
-
-This sends it toward three different sides of the box.
-
-After collision:
-
-        X velocity changes sign
-        Y velocity changes sign
-        Z velocity changes sign
-
-so subsequent motion occurs in the opposite directions.
-
-Gravity continuously modifies Y velocity.
-
-Wind continuously modifies the velocity.
-
-Therefore the trajectory is three-dimensional rather than
-a simple vertical bouncing motion.
-
-
-======================================================================
-
-THE RED DOT HAS BEEN REMOVED
-
-There is only ONE red object representing the ball.
-
-The previous velocity indicator was removed because it could
-be confused with the calculated ball position.
-
-The velocity is now displayed numerically in the UI.
-
-
-======================================================================
-
-END
-
-======================================================================
-*/
